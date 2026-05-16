@@ -1,0 +1,15 @@
+.firebase/
+firebase-debug.log
+node_modules/
+.git/
+.agents/
+.codex/
+.vercel/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.p8
+service-account*.json

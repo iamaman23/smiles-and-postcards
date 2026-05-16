@@ -1,0 +1,5326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smiles and Postcards — Travel Stories Worth Following</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="./smilesandpostcards-recommendation-intents.js"></script>
+<script type="module" src="./analytics.js"></script>
+<style>
+/* ═══════════════════════════════════════════
+   RESET & VARIABLES
+   ═══════════════════════════════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-warm: oklch(96.8% 0.012 84);
+  --bg-card: oklch(98.8% 0.006 84);
+  --bg-dark: oklch(26% 0.02 196);
+  --bg-note: oklch(94.8% 0.016 82);
+  --text-primary: oklch(28% 0.022 196);
+  --text-muted: oklch(55% 0.016 190);
+  --text-light: oklch(80% 0.012 84);
+  --terracotta: oklch(58% 0.11 42);
+  --forest: oklch(39% 0.038 185);
+  --gold: oklch(73% 0.08 83);
+  --gold-light: oklch(86% 0.05 88);
+  --cream: oklch(95.4% 0.012 86);
+  --border: oklch(88.5% 0.01 82);
+  --shadow-soft: 0 24px 60px rgba(33, 35, 33, 0.08);
+  --shadow-card: 0 18px 40px rgba(33, 35, 33, 0.06);
+  --shadow-line: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --radius-sm: 14px;
+  --content-width: 1320px;
+  --home-card-height: 480px;
+
+  --font-display: 'Newsreader', Georgia, serif;
+  --font-body: 'Instrument Sans', 'Segoe UI', sans-serif;
+  --font-accent: 'Instrument Serif', Georgia, serif;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at top left, rgba(177, 128, 84, 0.08), transparent 24%),
+    radial-gradient(circle at 82% 14%, rgba(82, 109, 102, 0.08), transparent 20%),
+    linear-gradient(180deg, rgba(251, 248, 242, 0.98), rgba(245, 240, 232, 0.98) 48%, rgba(247, 243, 236, 0.99));
+  color: var(--text-primary);
+  line-height: 1.65;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14)),
+    repeating-linear-gradient(90deg, rgba(89, 110, 102, 0.012) 0, rgba(89, 110, 102, 0.012) 1px, transparent 1px, transparent 144px);
+  opacity: 0.42;
+  z-index: -2;
+}
+
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+.travel-note,
+.blog-grid,
+.reco-layout,
+.content-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 760px;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+.blog-card:focus-visible {
+  outline: 3px solid rgba(167, 104, 61, 0.34);
+  outline-offset: 4px;
+}
+
+/* ═══════════════════════════════════════════
+   PAGE TRANSITIONS
+   ═══════════════════════════════════════════ */
+.page {
+  display: none;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+}
+.page.active {
+  display: block;
+}
+.page.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════
+   NAV
+   ═══════════════════════════════════════════ */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 1.35rem 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.4s, box-shadow 0.4s, padding 0.4s, border-color 0.4s;
+}
+.nav.scrolled {
+  background: rgba(249, 246, 239, 0.9);
+  box-shadow: 0 14px 30px rgba(30, 32, 29, 0.06);
+  border-bottom: 1px solid rgba(162, 149, 132, 0.18);
+  padding: 0.9rem 3rem;
+}
+.nav__logo {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.nav__logo span {
+  color: var(--forest);
+  font-style: italic;
+}
+.nav__links {
+  display: flex;
+  gap: 1.6rem;
+  align-items: center;
+}
+.nav__auth {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0.72rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 72, 68, 0.16);
+  background: rgba(255,255,255,0.62);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 0.25s, border-color 0.25s, background 0.25s;
+}
+.nav__auth:hover {
+  transform: translateY(-1px);
+  border-color: rgba(184,83,46,0.35);
+  background: rgba(255,255,255,0.86);
+}
+.nav__auth.is-hidden {
+  display: none;
+}
+.nav__link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color 0.3s;
+  position: relative;
+}
+.nav__link::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(76, 105, 98, 0.26);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s var(--ease-out-expo);
+}
+.nav__link:hover { color: var(--text-primary); }
+.nav__link:hover::after { transform: scaleX(1); }
+.nav__toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(61, 72, 68, 0.15);
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.55);
+}
+.nav__toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ═══════════════════════════════════════════
+   HOME — HERO
+   ═══════════════════════════════════════════ */
+.hero {
+  position: relative;
+  min-height: 820px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
+  padding: 8.5rem 3rem 4rem;
+}
+.hero__bg {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(31,30,25,0.14) 0%, rgba(31,30,25,0.36) 100%),
+    linear-gradient(90deg, rgba(24,28,30,0.58) 0%, rgba(24,28,30,0.28) 42%, rgba(24,28,30,0.12) 100%),
+    url('https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1920&q=80') center/cover no-repeat;
+  transform: scale(1.04);
+  transition: transform 8s ease-out;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 3rem 2.25rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0));
+  z-index: 2;
+}
+.hero.loaded .hero__bg {
+  transform: scale(1);
+}
+.hero__content {
+  position: relative;
+  z-index: 12;
+  text-align: left;
+  max-width: 760px;
+}
+.hero__tag {
+  font-family: var(--font-accent);
+  font-size: 1.1rem;
+  font-style: italic;
+  color: rgba(244, 233, 208, 0.9);
+  margin-bottom: 1.15rem;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s 0.3s var(--ease-out-expo) forwards;
+}
+.hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(3.4rem, 7vw, 6rem);
+  font-weight: 600;
+  color: rgba(255,255,255,0.98);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  margin-bottom: 1.25rem;
+  opacity: 0;
+  transform: translateY(30px);
+  animation: fadeUp 0.8s 0.5s var(--ease-out-expo) forwards;
+}
+.hero__title em {
+  font-style: italic;
+  color: rgba(240, 228, 198, 0.96);
+}
+.hero__subtitle {
+  font-size: 1.08rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.78);
+  max-width: 38rem;
+  margin: 0 0 2.1rem;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s 0.7s var(--ease-out-expo) forwards;
+}
+
+.hero__quicklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.3rem;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s 1.05s var(--ease-out-expo) forwards;
+}
+
+.hero__quicklink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.78rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(252, 249, 244, 0.1);
+  color: rgba(255,255,255,0.88);
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: transform 0.3s var(--ease-out-quart), background 0.3s var(--ease-out-quart), border-color 0.3s;
+}
+
+.hero__quicklink:hover {
+  transform: translateY(-2px);
+  background: rgba(252, 249, 244, 0.16);
+  border-color: rgba(255,255,255,0.28);
+}
+
+/* Search Bar */
+.search-wrap {
+  position: relative;
+  z-index: 18;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s 0.9s var(--ease-out-expo) forwards;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(249, 245, 238, 0.96);
+  border: 1px solid rgba(255,255,255,0.24);
+  border-radius: 999px;
+  padding: 0.4rem 0.4rem 0.4rem 1.05rem;
+  width: min(100%, 700px);
+  max-width: 700px;
+  box-shadow: 0 18px 40px rgba(18, 23, 26, 0.14);
+  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+.search:focus-within {
+  border-color: rgba(79, 106, 100, 0.36);
+  box-shadow: 0 22px 44px rgba(18, 23, 26, 0.16);
+}
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 0.85rem);
+  left: 0;
+  right: 0;
+  width: min(100%, 700px);
+  display: none;
+  background: rgba(251,248,242,0.98);
+  border: 1px solid rgba(145,136,122,0.2);
+  border-radius: 24px;
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  z-index: 40;
+}
+.search-suggestions.active {
+  display: block;
+}
+.search-suggestions__item {
+  width: 100%;
+  text-align: left;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid rgba(28,28,28,0.08);
+  color: var(--text-primary);
+  background: transparent;
+  display: grid;
+  gap: 0.22rem;
+}
+.search-suggestions__item:last-child {
+  border-bottom: none;
+}
+.search-suggestions__item:hover {
+  background: rgba(239, 232, 221, 0.75);
+}
+.search-suggestions__city {
+  display: block;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-suggestions__meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  margin-top: 0.1rem;
+  line-height: 1.45;
+}
+.search__icon {
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  color: rgba(63, 81, 76, 0.72);
+}
+.search__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-primary);
+  padding: 0.65rem 0.4rem;
+}
+.search__input::placeholder {
+  color: rgba(86, 99, 96, 0.68);
+}
+.search__input:focus-visible,
+.search__clear:focus-visible,
+.search__btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.search__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  color: rgba(86, 99, 96, 0.82);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.search__clear.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.search__clear:hover {
+  background: rgba(74, 102, 97, 0.08);
+  color: var(--forest);
+}
+.search__clear svg {
+  width: 14px;
+  height: 14px;
+}
+.search__btn {
+  flex-shrink: 0;
+  background: var(--forest);
+  color: rgba(255,255,255,0.96);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.9rem 1.35rem;
+  border-radius: 999px;
+  transition: background 0.3s, transform 0.2s, box-shadow 0.3s;
+}
+.search__btn:hover {
+  background: oklch(34% 0.036 185);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(28, 49, 51, 0.2);
+}
+
+/* Scroll hint */
+.hero__scroll {
+  position: absolute;
+  bottom: 2.4rem;
+  right: 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: rgba(255,255,255,0.58);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  animation: float 2.5s ease-in-out infinite;
+}
+.hero__scroll-line {
+  width: 54px; height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.72), transparent);
+}
+
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* ═══════════════════════════════════════════
+   HOME — PINNED SECTION
+   ═══════════════════════════════════════════ */
+.pinned {
+  padding: 4.75rem 3rem 6.5rem;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+.travel-note {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 4.5rem 3rem 0;
+}
+.travel-note__inner {
+  border-top: 1px solid rgba(148, 136, 118, 0.22);
+  border-bottom: 1px solid rgba(148, 136, 118, 0.22);
+  padding: 2.75rem 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3rem;
+}
+.travel-note__quote {
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 2.8vw, 2.5rem);
+  line-height: 1.18;
+  letter-spacing: -0.03em;
+  color: var(--forest);
+  max-width: 18ch;
+}
+.travel-note__mark {
+  font-family: var(--font-accent);
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-style: italic;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  margin-bottom: 3rem;
+}
+.section-tag {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--forest);
+  display: inline-block;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.1vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.section-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(108, 123, 118, 0.26), rgba(108, 123, 118, 0.04));
+}
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin: 0 0 2.75rem;
+}
+.pinned-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+.home-filters {
+  position: sticky;
+  top: 6.5rem;
+  max-height: calc(100vh - 7.5rem);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(251,248,242,0.98), rgba(245,239,229,0.94));
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem;
+  box-shadow: 0 16px 34px rgba(33, 35, 33, 0.05);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(43,76,63,0.32) transparent;
+}
+.home-filters::-webkit-scrollbar {
+  width: 8px;
+}
+.home-filters::-webkit-scrollbar-thumb {
+  background: rgba(43,76,63,0.28);
+  border-radius: 999px;
+}
+.home-filters__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin-bottom: 0.35rem;
+}
+.home-filters__hint {
+  color: var(--text-muted);
+  font-size: 0.94rem;
+  margin-bottom: 1.35rem;
+  max-width: 26ch;
+}
+.home-filters__group {
+  margin-bottom: 1.1rem;
+}
+.home-filters__label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.48rem;
+}
+.home-filters__control {
+  width: 100%;
+  appearance: none;
+  border: 1px solid rgba(147, 136, 118, 0.22);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.9);
+  color: var(--text-primary);
+  padding: 0.9rem 2.95rem 0.9rem 0.95rem;
+  box-shadow: var(--shadow-line);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2355605b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.95rem center;
+  background-size: 16px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(147, 136, 118, 0.2);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.86);
+  color: var(--text-primary);
+  padding: 0.88rem 1.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: transform 0.25s var(--ease-out-quart), border-color 0.25s var(--ease-out-quart), background 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
+}
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(79, 106, 100, 0.28);
+  box-shadow: 0 12px 24px rgba(30, 32, 29, 0.08);
+}
+.home-filters__reset {
+  width: 100%;
+  margin-top: 0.5rem;
+  background: rgba(74, 102, 97, 0.08);
+  color: var(--forest);
+}
+.home-filters__smart {
+  margin: 0.6rem 0 1.1rem;
+  border: 1px solid rgba(147, 136, 118, 0.2);
+  border-radius: 18px;
+  background: rgba(243,236,225,0.72);
+  overflow: hidden;
+}
+.home-filters__smart summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.05rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--forest);
+  cursor: pointer;
+}
+.home-filters__smart summary::-webkit-details-marker {
+  display: none;
+}
+.home-filters__smart summary::after {
+  content: '+';
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+}
+.home-filters__smart[open] summary::after {
+  content: '−';
+}
+.home-filters__smart-body {
+  padding: 0 1.05rem 1.05rem;
+}
+.home-filters__subhint {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0 0 0.95rem;
+}
+.pinned-content {
+  min-width: 0;
+}
+.filter-chip {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  border-radius: 999px;
+  padding: 0.7rem 0.95rem;
+  transition: color 0.25s, background 0.25s, border-color 0.25s, transform 0.25s;
+}
+.filter-chip:hover,
+.filter-chip.active {
+  color: rgba(255,255,255,0.98);
+  background: var(--forest);
+  border-color: var(--forest);
+  transform: translateY(-1px);
+}
+
+/* Blog Grid — Magazine Layout */
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.65rem;
+  align-items: start;
+}
+
+/* Card Base */
+.blog-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.5s var(--ease-out-expo), box-shadow 0.5s var(--ease-out-expo), border-color 0.3s;
+}
+.blog-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Featured card (large) */
+.blog-card--featured {
+  min-height: var(--home-card-height);
+  height: var(--home-card-height);
+  grid-column: span 6;
+}
+.blog-card--featured-left {
+  grid-column: span 6;
+}
+.blog-card--featured-right {
+  grid-column: span 6;
+}
+.blog-card--featured .blog-card__img {
+  height: 100%;
+}
+.blog-card--featured .blog-card__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(24,28,30,0.86) 0%, rgba(24,28,30,0.18) 58%);
+  z-index: 1;
+}
+.blog-card--featured .blog-card__body {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  z-index: 2;
+  padding: 1.65rem 1.7rem 1.75rem;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+.blog-card--featured .blog-card__country {
+  color: rgba(243, 231, 199, 0.92);
+}
+.blog-card--featured .blog-card__title {
+  font-size: clamp(1.82rem, 2.7vw, 2.35rem);
+  color: #fff;
+  margin-bottom: 0.18rem;
+}
+.blog-card--featured .blog-card__excerpt {
+  color: rgba(255,255,255,0.74);
+  max-width: 32rem;
+}
+
+/* Standard cards */
+.blog-card--std {
+  grid-column: span 6;
+  background: linear-gradient(180deg, rgba(252,249,244,0.96), rgba(248,243,236,0.98));
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  display: grid;
+  grid-template-rows: 230px minmax(0, 1fr);
+  min-height: var(--home-card-height);
+  height: var(--home-card-height);
+  box-shadow: 0 14px 30px rgba(33, 35, 33, 0.05);
+}
+.blog-card--std .blog-card__img {
+  height: 230px;
+}
+.blog-card--std .blog-card__body {
+  padding: 1.08rem 1.08rem 1.12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+/* Card shared elements */
+.blog-card__img {
+  width: 100%;
+  object-fit: cover;
+  transition: transform 0.6s var(--ease-out-expo);
+  filter: saturate(0.92) contrast(0.97);
+}
+.blog-card:hover .blog-card__img {
+  transform: scale(1.04);
+}
+.blog-card__img-wrap {
+  overflow: hidden;
+  position: relative;
+}
+.blog-card--featured .blog-card__img-wrap {
+  position: absolute;
+  inset: 0;
+}
+.blog-card__country {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--forest);
+  margin-bottom: 0.32rem;
+  display: block;
+}
+.blog-card__title {
+  font-family: var(--font-display);
+  font-size: 1.34rem;
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin-bottom: 0.16rem;
+}
+.blog-card__excerpt {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.blog-card__signals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+.blog-card__context {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.blog-card__context-line {
+  display: inline;
+}
+.blog-card__context strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.blog-card__meta {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(139,133,120,0.14);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+}
+.blog-card__meta strong {
+  color: var(--text-primary);
+}
+.blog-card--featured .blog-card__meta {
+  border-color: rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.78);
+}
+.blog-card--featured .blog-card__context {
+  color: rgba(255,255,255,0.78);
+}
+.blog-card--featured .blog-card__meta strong,
+.blog-card--featured .blog-card__context strong {
+  color: rgba(255,255,255,0.96);
+}
+.blog-card__badge {
+  position: absolute;
+  top: 1rem; left: 1rem;
+  z-index: 3;
+  background: rgba(247, 241, 226, 0.92);
+  color: var(--forest);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+}
+.blog-card__vibe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.42rem 0.76rem;
+  border-radius: 999px;
+  background: rgba(74, 102, 97, 0.1);
+  color: var(--forest);
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.blog-card--featured .blog-card__vibe {
+  background: rgba(240,220,164,0.18);
+  color: #fff;
+}
+.blog-card__vibe::before {
+  content: 'Mood';
+  opacity: 0.7;
+}
+
+/* About */
+.about {
+  padding: 1rem 3rem 5rem;
+}
+.about-shell {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 2rem;
+  align-items: stretch;
+}
+.about-copy {
+  padding: clamp(2rem, 3vw, 3rem);
+  border-radius: 34px;
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  background:
+    linear-gradient(180deg, rgba(252,249,244,0.96), rgba(247,241,233,0.98)),
+    radial-gradient(circle at top right, rgba(176, 129, 83, 0.1), transparent 28%);
+  box-shadow: 0 20px 40px rgba(33, 35, 33, 0.05);
+}
+.about-copy__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  color: var(--terracotta);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.about-copy__eyebrow::before {
+  content: '';
+  width: 36px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+.about-copy__title {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 4.3vw, 4rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  max-width: 11ch;
+  margin-bottom: 1.4rem;
+}
+.about-copy__body {
+  max-width: 64ch;
+}
+.about-copy__body p {
+  font-size: 1rem;
+  line-height: 1.72;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+.about-copy__body p:last-child {
+  margin-bottom: 0;
+}
+.about-copy__signoff {
+  margin-top: 1.5rem;
+  font-family: var(--font-accent);
+  font-size: 1.25rem;
+  color: var(--forest);
+}
+.about-visual {
+  display: grid;
+  gap: 1rem;
+}
+.about-portrait {
+  position: relative;
+  min-height: 100%;
+  border-radius: 34px;
+  overflow: hidden;
+  background: oklch(31% 0.02 188);
+  box-shadow: var(--shadow-soft);
+}
+.about-portrait img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.92) contrast(0.98);
+}
+.about-portrait::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(25,29,29,0.04), rgba(25,29,29,0.45));
+}
+.about-note {
+  position: absolute;
+  left: 1.15rem;
+  right: 1.15rem;
+  bottom: 1.15rem;
+  z-index: 1;
+  padding: 1rem 1.05rem;
+  border-radius: 22px;
+  background: rgba(247, 242, 234, 0.9);
+  color: var(--text-primary);
+}
+.about-note__title {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  margin-bottom: 0.35rem;
+}
+.about-note p {
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════
+   HOME — SEARCH RESULTS OVERLAY
+   ═══════════════════════════════════════════ */
+.search-results {
+  display: none;
+}
+.search-results__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+.search-results__title {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+.search-results__clear {
+  font-size: 0.85rem;
+  color: var(--terracotta);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.search-results__clear:hover { opacity: 0.7; }
+.search-results__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.5rem;
+}
+.search-results__empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.search-results__empty span {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 0.65rem;
+}
+
+/* ═══════════════════════════════════════════
+   HOME — FOOTER STRIP
+   ═══════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid rgba(148, 136, 118, 0.18);
+  padding: 2.75rem 3rem 3.25rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+.footer__left {
+  display: grid;
+  gap: 0.55rem;
+}
+.footer__brand {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+.footer__brand span { color: var(--forest); font-style: italic; }
+.footer__note {
+  max-width: 28rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.footer__right {
+  display: grid;
+  gap: 0.55rem;
+  justify-items: end;
+}
+.footer__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.footer__links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+.footer__links a {
+  transition: color 0.25s, transform 0.25s;
+}
+.footer__links a:hover {
+  color: var(--terracotta);
+  transform: translateY(-1px);
+}
+
+.cookie-banner {
+  position: fixed;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 250;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(148, 136, 118, 0.22);
+  border-radius: 22px;
+  background: rgba(28, 32, 31, 0.96);
+  color: rgba(255,255,255,0.9);
+  box-shadow: 0 24px 60px rgba(19, 22, 24, 0.26);
+}
+.cookie-banner.is-hidden {
+  display: none;
+}
+.cookie-banner__title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin-bottom: 0.2rem;
+}
+.cookie-banner__text {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.72);
+  max-width: 44rem;
+}
+.cookie-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.cookie-banner__btn {
+  min-height: 42px;
+  padding: 0.8rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 0.25s, background 0.25s, border-color 0.25s;
+}
+.cookie-banner__btn:hover {
+  transform: translateY(-1px);
+}
+.cookie-banner__btn--accept {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+}
+.cookie-banner__btn--decline {
+  background: rgba(255,255,255,0.06);
+}
+
+/* ═══════════════════════════════════════════
+   LEGAL PAGES
+   ═══════════════════════════════════════════ */
+.legal-page {
+  min-height: 100vh;
+  padding-top: 7.5rem;
+}
+.legal-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 3rem 4rem;
+}
+.legal-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+.legal-hero__card,
+.legal-summary,
+.legal-panel {
+  border: 1px solid rgba(148, 136, 118, 0.18);
+  border-radius: 24px;
+  background: rgba(255,255,255,0.76);
+  box-shadow: var(--shadow-card);
+}
+.legal-hero__card {
+  padding: 2rem 2.1rem;
+}
+.legal-kicker {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--forest);
+  margin-bottom: 0.7rem;
+}
+.legal-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.35rem, 4vw, 3.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  margin-bottom: 0.9rem;
+}
+.legal-intro {
+  max-width: 40rem;
+  font-size: 1.02rem;
+  color: var(--text-muted);
+}
+.legal-summary {
+  padding: 1.4rem 1.5rem;
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+.legal-summary__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.legal-summary__value {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  line-height: 1.08;
+}
+.legal-grid {
+  display: grid;
+  gap: 1rem;
+}
+.legal-panel {
+  padding: 1.55rem 1.6rem;
+}
+.legal-panel h2 {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  line-height: 1.08;
+  margin-bottom: 0.7rem;
+}
+.legal-panel p,
+.legal-panel li {
+  color: var(--text-muted);
+}
+.legal-panel ul {
+  padding-left: 1.1rem;
+}
+.legal-panel li + li,
+.legal-panel p + p {
+  margin-top: 0.6rem;
+}
+.legal-highlight-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.legal-highlight {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(250, 245, 236, 0.9), rgba(243, 236, 225, 0.92));
+  border: 1px solid rgba(148, 136, 118, 0.14);
+}
+.legal-highlight strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+.legal-highlight span {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+/* ═══════════════════════════════════════════
+   BLOG DETAIL PAGE
+   ═══════════════════════════════════════════ */
+.blog-hero {
+  position: relative;
+  height: 70vh;
+  min-height: 560px;
+  overflow: hidden;
+}
+.blog-hero__img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.blog-hero__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(24,28,30,0.86) 0%, rgba(24,28,30,0.18) 50%);
+}
+.blog-hero__content {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 3rem 3rem 3.5rem;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  z-index: 2;
+}
+.blog-hero__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  transition: color 0.3s;
+  cursor: pointer;
+}
+.blog-hero__back:hover { color: #fff; }
+.blog-hero__country {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(244, 233, 208, 0.9);
+  margin-bottom: 0.5rem;
+}
+.blog-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 5vw, 4.4rem);
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  margin-bottom: 1rem;
+}
+.blog-hero__meta {
+  display: flex;
+  gap: 2rem;
+  color: rgba(255,255,255,0.65);
+  font-size: 0.9rem;
+}
+.blog-hero__meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Quick Stats Bar */
+.stats-bar {
+  background: linear-gradient(90deg, oklch(25% 0.018 196), oklch(28% 0.026 186));
+  padding: 0;
+}
+.stats-bar__inner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+.stat {
+  padding: 1.5rem 2rem;
+  text-align: center;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.stat:last-child { border-right: none; }
+.stat__value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 0.2rem;
+}
+.stat__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.45);
+}
+
+/* Blog Content Area */
+.blog-content {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 4.5rem 3rem;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 4.5rem;
+}
+
+.blog-main {
+  max-width: 740px;
+  min-width: 0;
+}
+
+/* Section blocks */
+.content-section {
+  margin-bottom: 4.5rem;
+  min-width: 0;
+}
+.content-section__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.15rem;
+  border-bottom: 1px solid rgba(148, 136, 118, 0.22);
+}
+.content-section__icon {
+  width: 44px; height: 44px;
+  background: rgba(74, 102, 97, 0.08);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.content-section__icon svg {
+  width: 22px; height: 22px;
+  color: var(--terracotta);
+}
+.content-section__title {
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 600;
+}
+.content-section__subtitle {
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+/* Itinerary Timeline */
+.timeline {
+  position: relative;
+  padding-left: 2.5rem;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px; top: 8px; bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--terracotta), var(--gold), var(--forest));
+  border-radius: 2px;
+}
+.timeline-day {
+  position: relative;
+  margin-bottom: 2.5rem;
+}
+.timeline-day:last-child { margin-bottom: 0; }
+.timeline-day__dot {
+  position: absolute;
+  left: -2.5rem; top: 4px;
+  width: 18px; height: 18px;
+  background: var(--bg-warm);
+  border: 3px solid var(--terracotta);
+  border-radius: 50%;
+  z-index: 1;
+}
+.timeline-day__label {
+  font-family: var(--font-accent);
+  font-size: 1.15rem;
+  color: var(--terracotta);
+  margin-bottom: 0.3rem;
+}
+.timeline-day__title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.timeline-day__text {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.timeline-day__spots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.spot-tag {
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.3rem 0.75rem;
+  border-radius: 50px;
+  background: var(--cream);
+  color: var(--forest);
+  border: 1px solid var(--border);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Food Cards */
+.food-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+.food-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: flex-start;
+  background: linear-gradient(180deg, #fffdf8 0%, #f7f0e4 100%);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 1.2rem;
+  transition: transform 0.4s var(--ease-out-expo), box-shadow 0.4s;
+  min-width: 0;
+}
+.food-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+}
+.food-card__index {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(184,83,46,0.22);
+  background: rgba(184,83,46,0.08);
+  color: var(--terracotta);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+.food-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+.food-card__name {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.food-card__cuisine {
+  font-family: var(--font-accent);
+  font-size: 0.95rem;
+  color: var(--terracotta);
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.food-card__desc {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+.food-card__price {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--forest);
+  background: rgba(43,76,63,0.06);
+  border: 1px solid rgba(43,76,63,0.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+  padding: 0.35rem 0.8rem;
+  border-radius: 50px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Hidden Gems */
+.gems-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+.gem-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(245,240,232,0.9) 100%);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 1.25rem;
+  transition: transform 0.4s var(--ease-out-expo), box-shadow 0.4s;
+  min-width: 0;
+}
+.gem-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 38px rgba(0,0,0,0.08);
+}
+.gem-card__number {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+  flex-shrink: 0;
+  width: 2.5rem;
+}
+.gem-card__content { flex: 1; }
+.gem-card__name {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.gem-card__desc {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+.gem-card__tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--forest);
+  font-weight: 500;
+}
+
+/* Budget Section */
+.budget-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 20px;
+}
+.budget-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.budget-table th {
+  background: var(--bg-dark);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 1rem 1.25rem;
+  text-align: left;
+}
+.budget-table td {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+}
+.budget-table tr:last-child td {
+  border-bottom: none;
+}
+.budget-table .budget-cat {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.budget-table .budget-val {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--forest);
+}
+.budget-total {
+  background: var(--cream);
+}
+.budget-total td {
+  font-weight: 700 !important;
+  font-size: 1rem;
+  border-bottom: none;
+}
+.budget-note {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Sidebar */
+.blog-sidebar {
+  position: sticky;
+  top: 100px;
+  align-self: start;
+  min-width: 0;
+}
+.sidebar-card {
+  background: linear-gradient(180deg, rgba(252,249,244,0.96), rgba(247,242,234,0.96));
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  border-radius: 20px;
+  padding: 1.6rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+.sidebar-card__title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--border);
+}
+.toc-list {
+  list-style: none;
+}
+.toc-list li {
+  margin-bottom: 0.6rem;
+}
+.toc-list a {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.toc-list a::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toc-list a:hover { color: var(--terracotta); }
+.toc-list a:hover::before { background: var(--terracotta); }
+
+.sidebar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sidebar-tag {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.85rem;
+  border-radius: 50px;
+  background: var(--cream);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: all 0.3s;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.sidebar-tag:hover {
+  background: var(--terracotta);
+  color: #fff;
+  border-color: var(--terracotta);
+}
+.snapshot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.snapshot-pill {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.snapshot-pill strong {
+  color: var(--text-primary);
+}
+.score-breakdown {
+  display: grid;
+  gap: 0.85rem;
+}
+.score-bar__row {
+  display: grid;
+  gap: 0.38rem;
+}
+.score-bar__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.86rem;
+}
+.score-bar__label {
+  font-weight: 600;
+}
+.score-bar__value {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.score-bar__track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--cream);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.score-bar__fill {
+  width: var(--score-width, 60%);
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold) 0%, var(--terracotta) 100%);
+  border-radius: inherit;
+  transition: width 0.6s var(--ease-out-expo);
+}
+.collapsible-note {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.85);
+  overflow: hidden;
+}
+.collapsible-note + .collapsible-note {
+  margin-top: 1rem;
+}
+.collapsible-note summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 1rem 1.15rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+.collapsible-note summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible-note summary::after {
+  content: '+';
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+.collapsible-note[open] summary::after {
+  content: '−';
+}
+.collapsible-note__body {
+  padding: 0 1.15rem 1.15rem;
+}
+.collapsible-note__list {
+  list-style: none;
+  display: grid;
+  gap: 0.7rem;
+}
+.collapsible-note__list li {
+  position: relative;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+}
+.collapsible-note__list li::before {
+  content: '';
+  position: absolute;
+  top: 0.63rem;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--terracotta);
+}
+.itinerary-tabs {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.itinerary-tabs__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  min-width: 0;
+  align-items: center;
+}
+.itinerary-tabs__tab {
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.94);
+  color: var(--text-muted);
+  border-radius: 50%;
+  width: 3rem;
+  height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 3rem;
+  padding: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
+  transition: transform 0.25s ease, background 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+.itinerary-tabs__tab.active,
+.itinerary-tabs__tab:hover {
+  background: var(--forest);
+  border-color: var(--forest);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(52, 84, 75, 0.16);
+}
+.itinerary-tabs__panel {
+  display: none;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(245,240,232,0.9) 100%);
+  min-width: 0;
+}
+.itinerary-tabs__panel.active {
+  display: block;
+}
+.itinerary-tabs__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.85rem;
+}
+.itinerary-tabs__day {
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 50%;
+  border: 1px solid rgba(184, 131, 76, 0.22);
+  background: rgba(180, 124, 71, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 2.9rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--terracotta);
+}
+.itinerary-tabs__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  margin: 0;
+}
+.itinerary-tabs__text {
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+.itinerary-tabs__spots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+.mobile-guide {
+  display: none;
+}
+.mobile-guide__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.mobile-guide__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  width: 100%;
+  padding: 0.8rem 0.95rem;
+  border-radius: 18px;
+  border: 1px solid rgba(147, 136, 118, 0.22);
+  background: rgba(255,255,255,0.92);
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: center;
+}
+.mobile-guide__item:hover {
+  border-color: rgba(184,83,46,0.32);
+  color: var(--terracotta);
+}
+
+.sidebar-author {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.sidebar-author__avatar {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+.sidebar-author__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+}
+.sidebar-author__bio {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* ═══════════════════════════════════════════
+   RECOMMENDATIONS
+   ═══════════════════════════════════════════ */
+.reco-page {
+  min-height: 100vh;
+  padding: 8rem 3rem 4rem;
+  background:
+    radial-gradient(circle at top left, rgba(180, 124, 71, 0.12), transparent 24%),
+    radial-gradient(circle at 90% 15%, rgba(78, 115, 113, 0.1), transparent 22%),
+    linear-gradient(180deg, rgba(252,249,244,0.78), rgba(247,243,237,0.98));
+}
+.reco-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 1.7rem;
+  align-items: stretch;
+}
+.reco-hero__copy,
+.reco-hero__note,
+.reco-shell__sidebar,
+.reco-shell__content {
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  border-radius: 28px;
+  background: rgba(252,249,244,0.88);
+  box-shadow: var(--shadow-card);
+}
+.reco-hero__copy {
+  padding: 2.6rem;
+}
+.reco-hero__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(74, 102, 97, 0.1);
+  color: var(--forest);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.reco-hero__title {
+  margin-top: 1rem;
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 4vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.reco-hero__text {
+  max-width: 640px;
+  margin-top: 1rem;
+  color: var(--text-muted);
+  font-size: 1.02rem;
+}
+.reco-hero__note {
+  padding: 2rem;
+  background:
+    linear-gradient(135deg, rgba(47, 71, 67, 0.94), rgba(24, 28, 30, 0.9)),
+    url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1600&q=80') center/cover;
+  color: #fff;
+  display: grid;
+  align-content: end;
+}
+.reco-hero__note p {
+  color: rgba(255,255,255,0.78);
+}
+.reco-shell {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 1.7rem;
+  margin-top: 2rem;
+}
+.reco-shell__sidebar {
+  padding: 1.45rem;
+  position: sticky;
+  top: 6.5rem;
+  height: fit-content;
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+  min-width: 0;
+}
+.reco-shell__content {
+  padding: 1.7rem;
+  min-width: 0;
+}
+.reco-sidebar__title,
+.reco-results__title {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+}
+.reco-sidebar__hint,
+.reco-results__meta,
+.reco-empty {
+  color: var(--text-muted);
+}
+.reco-intent-grid {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.2rem;
+}
+.reco-mobile-picker {
+  display: none;
+  margin-top: 1.2rem;
+}
+.reco-mobile-picker__label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+.reco-mobile-picker__select {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(147, 136, 118, 0.22);
+  background: rgba(255,255,255,0.95);
+  color: var(--text-primary);
+}
+.reco-intent-card {
+  width: 100%;
+  text-align: left;
+  padding: 1rem 1rem 1.05rem;
+  border-radius: 22px;
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  background: rgba(255,255,255,0.8);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+.reco-intent-card:hover,
+.reco-intent-card.active {
+  transform: translateY(-1px);
+  border-color: rgba(184,83,46,0.35);
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(30,22,15,0.08);
+}
+.reco-intent-card__eyebrow {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+.reco-intent-card__title {
+  margin-top: 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  line-height: 1.18;
+}
+.reco-intent-card__desc {
+  margin-top: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+.reco-intent-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+.reco-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(74, 102, 97, 0.1);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.reco-results__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.reco-results__eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+.reco-results__desc {
+  max-width: 680px;
+  margin-top: 0.55rem;
+  color: var(--text-muted);
+}
+.reco-results__cities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+  margin-top: 1.4rem;
+}
+.reco-city-rank {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 3;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(28, 49, 51, 0.84);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.reco-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.reco-access {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8.5rem 1.5rem 4rem;
+}
+.reco-access__card {
+  border: 1px solid rgba(147, 136, 118, 0.18);
+  border-radius: 28px;
+  padding: 2rem;
+  background: rgba(255,255,255,0.82);
+  box-shadow: var(--shadow-card);
+}
+.reco-access__eyebrow {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+.reco-access__title {
+  margin-top: 0.7rem;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+.reco-access__text {
+  margin-top: 0.8rem;
+  max-width: 36rem;
+  color: var(--text-muted);
+}
+.reco-access__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1.3rem;
+}
+.reco-access__status {
+  margin-top: 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.reco-access__gate.is-hidden,
+.reco-access__content.is-hidden {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════
+   SCROLL REVEAL
+   ═══════════════════════════════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .legal-hero,
+  .legal-highlight-list {
+    grid-template-columns: 1fr;
+  }
+  .blog-content {
+    grid-template-columns: 1fr;
+    padding: 3.5rem 2rem;
+  }
+  .blog-sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  .food-grid {
+    grid-template-columns: 1fr;
+  }
+  .gems-list {
+    grid-template-columns: 1fr;
+  }
+  .reco-hero,
+  .reco-shell {
+    grid-template-columns: 1fr;
+  }
+  .reco-shell__sidebar {
+    position: static;
+    max-height: none;
+  }
+  .reco-results__cities {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .nav { padding: 1rem 1.5rem; }
+  .nav.scrolled { padding: 0.7rem 1.5rem; }
+  .nav__toggle { display: inline-flex; }
+  .nav__links {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 1.5rem;
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    width: min(220px, calc(100vw - 3rem));
+    background: rgba(249,246,239,0.98);
+    border: 1px solid rgba(147, 136, 118, 0.18);
+    border-radius: 18px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .nav__links.open { display: flex; }
+  .nav__auth {
+    width: 100%;
+    border-radius: 0;
+    justify-content: flex-start;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid rgba(147, 136, 118, 0.12);
+  }
+  .nav__link {
+    width: 100%;
+    padding: 0.9rem 1rem;
+  }
+  .nav__link::after { display: none; }
+
+  .hero {
+    min-height: 720px;
+    padding: 7.5rem 1.5rem 4rem;
+  }
+  .hero::after {
+    inset: auto 1.5rem 1.7rem;
+  }
+  .hero__content { max-width: 100%; }
+  .hero__quicklist { margin-right: 2.5rem; }
+  .search {
+    max-width: 100%;
+    width: 100%;
+    padding: 0.4rem;
+  }
+  .search-wrap { width: 100%; }
+  .search-suggestions {
+    width: 100%;
+    left: 0;
+    right: 0;
+  }
+
+  .travel-note { padding: 3rem 1.5rem 0; }
+  .travel-note__inner {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .pinned { padding: 3rem 1.5rem; }
+  .pinned-layout {
+    grid-template-columns: 1fr;
+  }
+  .home-filters {
+    position: static;
+    max-height: none;
+  }
+  .filter-bar { margin-top: 0; }
+  .blog-grid {
+    grid-template-columns: 1fr;
+  }
+  .blog-card--featured {
+    grid-column: 1;
+    grid-row: auto;
+    min-height: 380px;
+    height: auto;
+  }
+  .blog-card--std {
+    grid-column: 1;
+    min-height: 360px;
+    height: auto;
+  }
+  .blog-card__body {
+    padding: 1.25rem;
+  }
+  .blog-card__signals {
+    gap: 0.5rem;
+  }
+  .blog-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+  }
+  .about {
+    padding: 0 1.5rem 4rem;
+  }
+  .about-shell {
+    grid-template-columns: 1fr;
+  }
+  .about-copy,
+  .about-portrait {
+    border-radius: 26px;
+  }
+  .about-portrait {
+    min-height: 420px;
+  }
+
+  .stats-bar__inner {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stat { border-bottom: 1px solid rgba(255,255,255,0.08); }
+
+  .blog-content { padding: 2rem 1.5rem; gap: 2rem; }
+  .blog-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .mobile-guide {
+    display: block;
+  }
+  .sidebar-card--toc {
+    display: none;
+  }
+  .blog-hero__content { padding: 2rem 1.5rem; }
+  .legal-shell { padding: 0 1.5rem 3rem; }
+  .legal-panel,
+  .legal-hero__card,
+  .legal-summary { border-radius: 20px; }
+  .content-section__header {
+    align-items: flex-start;
+  }
+  .itinerary-tabs__nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(3rem, 3rem));
+    justify-content: flex-start;
+  }
+  .snapshot-summary,
+  .sidebar-tags {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .itinerary-tabs__tab,
+  .snapshot-pill,
+  .sidebar-tag {
+    justify-content: center;
+  }
+  .budget-table td,
+  .budget-table th {
+    padding: 0.9rem 1rem;
+  }
+
+  .footer { flex-direction: column; gap: 1rem; text-align: center; }
+  .footer__right { justify-items: center; }
+  .footer__links { flex-wrap: wrap; justify-content: center; }
+  .cookie-banner {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    grid-template-columns: 1fr;
+  }
+  .cookie-banner__actions {
+    flex-wrap: wrap;
+  }
+  .gem-card { flex-direction: column; }
+  .reco-page { padding: 7rem 1.5rem 3rem; }
+  .reco-hero__copy,
+  .reco-hero__note,
+  .reco-shell__sidebar,
+  .reco-shell__content { border-radius: 20px; }
+  .reco-results__header { flex-direction: column; }
+  .reco-shell__sidebar {
+    padding: 1.15rem;
+  }
+  .reco-intent-grid {
+    display: none;
+  }
+  .reco-mobile-picker {
+    display: block;
+  }
+  .hero__scroll {
+    right: 1.5rem;
+    bottom: 1.7rem;
+  }
+  .search__btn {
+    padding: 0.85rem 1.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .hero__bg,
+  .blog-card__img,
+  .reveal,
+  .page {
+    transform: none !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ NAVIGATION ═══════════════ -->
+<nav class="nav" id="nav">
+  <div class="nav__logo" data-track-event="navigation_click" data-track-param-location="header" data-track-param-label="brand_logo" onclick="navigateTo('home')">Smiles and <span>Postcards</span></div>
+  <button class="nav__toggle" type="button" aria-label="Open navigation" aria-expanded="false" data-track-event="navigation_click" data-track-param-location="header" data-track-param-label="mobile_menu" onclick="toggleMobileNav()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+  </button>
+  <div class="nav__links" id="nav-links">
+    <a class="nav__link" href="#" data-track-event="navigation_click" data-track-param-location="header" data-track-param-label="stories" onclick="navigateTo('home')">Stories</a>
+    <a class="nav__link" href="#recommendations" data-track-event="navigation_click" data-track-param-location="header" data-track-param-label="recommendations" onclick="navigateTo('recommendations')">Recommendations</a>
+    <a class="nav__link" href="#about" data-track-event="navigation_click" data-track-param-location="header" data-track-param-label="about" onclick="navigateTo('about')">About</a>
+    <button class="nav__auth" id="googleSignInBtn" type="button" onclick="signInWithGoogle()">Sign in with Google</button>
+    <button class="nav__auth is-hidden" id="googleSignOutBtn" type="button" onclick="signOutPublicUser()">Sign out</button>
+  </div>
+</nav>
+
+<!-- ═══════════════ HOME PAGE ═══════════════ -->
+<div class="page active" id="page-home">
+
+  <!-- Hero -->
+  <section class="hero" id="hero">
+    <div class="hero__bg"></div>
+    <div class="hero__content">
+      <p class="hero__tag">Field guide to thoughtful travel</p>
+      <h1 class="hero__title">Travel <em>slower</em>.<br>See more.</h1>
+      <p class="hero__subtitle">Editorial itineraries, small local finds, and grounded budgets for travelers who want places to unfold at a human pace.</p>
+      <div class="search-wrap">
+        <div class="search" id="hero-search">
+          <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="search__input" type="text" id="search-input" placeholder="Search a city, country, or vibe..." autocomplete="off" data-track-form-start="destination_search" data-track-form-location="hero">
+          <button class="search__clear" id="search-clear" type="button" aria-label="Clear search" onclick="clearSearch()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <button class="search__btn" data-track-event="cta_click" data-track-param-location="hero" data-track-param-label="explore_search" onclick="performSearch()">Explore</button>
+        </div>
+        <div class="search-suggestions" id="search-suggestions"></div>
+      </div>
+      <div class="hero__quicklist">
+        <button class="hero__quicklink" type="button" data-track-event="button_click" data-track-param-location="hero_quicklinks" data-track-param-label="quiet_mornings" onclick="document.getElementById('search-input').value='Kyoto'; performSearch()">Quiet Mornings</button>
+        <button class="hero__quicklink" type="button" data-track-event="button_click" data-track-param-location="hero_quicklinks" data-track-param-label="sunlit_cities" onclick="document.getElementById('search-input').value='Lisbon'; performSearch()">Sunlit Cities</button>
+        <button class="hero__quicklink" type="button" data-track-event="button_click" data-track-param-location="hero_quicklinks" data-track-param-label="remote_reset" onclick="document.getElementById('search-input').value='Bali'; performSearch()">Remote Reset</button>
+      </div>
+    </div>
+    <div class="hero__scroll">
+      <span>Keep drifting</span>
+      <div class="hero__scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- Search Results -->
+  <section class="search-results" id="search-results"></section>
+
+  <!-- Editorial Note -->
+  <section class="travel-note reveal">
+    <div class="travel-note__inner">
+      <p class="travel-note__quote">The best trips leave enough daylight for a wrong turn that turns out right.</p>
+      <span class="travel-note__mark">from the notebook</span>
+    </div>
+  </section>
+
+  <!-- Pinned Blogs -->
+  <section class="pinned reveal" id="pinned-section">
+    <div class="section-header">
+      <span class="section-tag">Pinned journeys</span>
+      <h2 class="section-title">Stories worth lingering in</h2>
+      <div class="section-line"></div>
+    </div>
+    <div class="pinned-layout">
+      <aside class="home-filters">
+        <h3 class="home-filters__title">Refine the route</h3>
+        <p class="home-filters__hint">Narrow the shelf by geography, pace, budget, and travel mood.</p>
+        <div class="home-filters__group">
+          <label class="home-filters__label" for="filter-continent">Continent</label>
+          <select class="home-filters__control" id="filter-continent"></select>
+        </div>
+        <div class="home-filters__group">
+          <label class="home-filters__label" for="filter-country">Country</label>
+          <select class="home-filters__control" id="filter-country"></select>
+        </div>
+        <div class="home-filters__group">
+          <label class="home-filters__label" for="filter-budget-range">Budget Range</label>
+          <select class="home-filters__control" id="filter-budget-range"></select>
+        </div>
+        <div class="home-filters__group">
+          <label class="home-filters__label" for="filter-itinerary">Itinerary Length</label>
+          <select class="home-filters__control" id="filter-itinerary"></select>
+        </div>
+        <div class="home-filters__group">
+          <label class="home-filters__label" for="filter-travel-style">Travel Style</label>
+          <select class="home-filters__control" id="filter-travel-style"></select>
+        </div>
+        <details class="home-filters__smart" open>
+          <summary>Smart score filters</summary>
+          <div class="home-filters__smart-body">
+            <p class="home-filters__subhint">Use weighted scores when you already know what matters most on this trip.</p>
+            <div class="home-filters__group">
+              <label class="home-filters__label" for="filter-smart-score">Score Focus</label>
+              <select class="home-filters__control" id="filter-smart-score"></select>
+            </div>
+            <div class="home-filters__group">
+              <label class="home-filters__label" for="filter-smart-score-min">Selected Score Minimum</label>
+              <select class="home-filters__control" id="filter-smart-score-min"></select>
+            </div>
+            <div class="home-filters__group">
+              <label class="home-filters__label" for="filter-final-score">Smart Match</label>
+              <select class="home-filters__control" id="filter-final-score"></select>
+            </div>
+          </div>
+        </details>
+        <button class="btn home-filters__reset" type="button" onclick="resetAdvancedFilters()">Reset Filters</button>
+      </aside>
+      <div class="pinned-content">
+        <div class="filter-bar" id="filter-bar"></div>
+        <div class="blog-grid" id="blog-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer__left">
+      <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+      <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+    </div>
+    <div class="footer__right">
+      <div class="footer__eyebrow">Legal</div>
+      <div class="footer__links">
+        <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+        <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+        <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══════════════ ABOUT PAGE ═══════════════ -->
+<div class="page" id="page-about">
+  <section class="legal-page">
+    <div class="legal-shell">
+      <section class="about reveal" id="about">
+        <div class="about-shell">
+          <div class="about-copy">
+            <span class="about-copy__eyebrow">About Smiles and Postcards</span>
+            <h1 class="about-copy__title">The Person Behind the Passport</h1>
+            <div class="about-copy__body">
+              <p>Hey there! I’m the face behind the screen and, more often than not, the person frantically trying to fit one last souvenir into an overhead bin.</p>
+              <p>I started this site because I believe travel shouldn't just be about checking boxes on a "Top 10" list. It’s about that specific feeling of being completely lost in a new city and realizing you’ve never felt more at home. For me, the magic is in the details, the smell of a morning market, the way the light hits a hidden alleyway at 4:00 PM, and the stories we tell through the lens once we get back.</p>
+              <p>I’ve spent years navigating the chaos of travel, from delayed trains to finding those quiet, "how is nobody else here?" spots that make a trip unforgettable. This website is my digital scrapbook and toolkit, designed to help you skip the tourist traps and get straight to the good stuff.</p>
+              <p>Whether you’re looking for a meticulously planned itinerary or just a single cinematic hook to inspire your next project, I’m here to help you see the world a little differently.</p>
+            </div>
+            <p class="about-copy__signoff">Let's find somewhere new to go.</p>
+          </div>
+          <div class="about-visual">
+            <div class="about-portrait">
+              <img src="https://images.unsplash.com/photo-1491557345352-5929e343eb89?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=1600" alt="A traveler pausing with luggage beside a sunlit street, ready for the next route.">
+              <div class="about-note">
+                <span class="about-note__title">What This Is</span>
+                <p>A digital scrapbook for slow travel, cinematic routes, and the places that still feel personal when the internet has already been there first.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer__left">
+          <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+          <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+        </div>
+        <div class="footer__right">
+          <div class="footer__eyebrow">Legal</div>
+          <div class="footer__links">
+            <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+            <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+            <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </section>
+</div>
+
+<!-- ═══════════════ RECOMMENDATIONS PAGE ═══════════════ -->
+<div class="page" id="page-recommendations">
+  <section class="reco-access reco-access__gate is-hidden" id="recommendations-gate">
+    <div class="reco-access__card reveal">
+      <div class="reco-access__eyebrow">Members Only</div>
+      <h1 class="reco-access__title">Sign in with Google to unlock recommendation routes.</h1>
+      <p class="reco-access__text">The recommendation library is gated behind Firebase Google login. Once you are signed in, the curated lanes and ranked city pages become available.</p>
+      <div class="reco-access__actions">
+        <button class="search__btn" type="button" onclick="signInWithGoogle()">Continue with Google</button>
+        <button class="hero__quicklink" type="button" onclick="navigateTo('home')">Back to stories</button>
+      </div>
+      <p class="reco-access__status" id="recommendations-gate-status">You need to be signed in to continue.</p>
+    </div>
+  </section>
+
+  <section class="reco-page reco-access__content" id="recommendations-content">
+    <div class="reco-hero reveal">
+      <div class="reco-hero__copy">
+        <span class="reco-hero__tag">Curated routes</span>
+        <h1 class="reco-hero__title">Start with a mood.<br>Then follow the route.</h1>
+        <p class="reco-hero__text">These recommendation lanes group together recurring travel intentions such as budget Europe, food-first Asia, romantic escapes, and digital nomad hubs. Each one resolves to ranked itineraries already waiting in the city library.</p>
+      </div>
+      <div class="reco-hero__note">
+        <h2 class="section-title" style="color:#fff;">Editorial discovery, not booking noise</h2>
+        <p>Instead of front-loading complexity, we begin with recognizable travel moods and let readers move into ranked city picks when they are ready.</p>
+      </div>
+    </div>
+
+    <div class="reco-shell reveal">
+      <aside class="reco-shell__sidebar">
+        <h2 class="reco-sidebar__title">Recommendation sets</h2>
+        <p class="reco-sidebar__hint">Choose a travel lane and we will open the ranked cities already attached to complete itinerary pages.</p>
+        <div class="reco-mobile-picker">
+          <label class="reco-mobile-picker__label" for="recommendation-select">Choose a route</label>
+          <select class="reco-mobile-picker__select" id="recommendation-select" onchange="setRecommendation(this.value)"></select>
+        </div>
+        <div class="reco-intent-grid" id="recommendation-grid"></div>
+      </aside>
+
+      <section class="reco-shell__content">
+        <div id="recommendation-detail"></div>
+      </section>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer__left">
+      <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+      <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+    </div>
+    <div class="footer__right">
+      <div class="footer__eyebrow">Legal</div>
+      <div class="footer__links">
+        <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+        <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+        <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══════════════ BLOG DETAIL PAGE ═══════════════ -->
+<div class="page" id="page-blog"></div>
+
+<div class="cookie-banner is-hidden" id="cookie-banner" role="dialog" aria-live="polite" aria-label="Cookie consent">
+  <div>
+    <div class="cookie-banner__title">Analytics cookies</div>
+    <p class="cookie-banner__text">We use Firebase Analytics to understand visits and clicks. Accept to enable analytics, or decline to keep non-essential tracking off. You can still read the full details on the cookie page.</p>
+  </div>
+  <div class="cookie-banner__actions">
+    <button class="cookie-banner__btn cookie-banner__btn--accept" type="button" onclick="acceptCookieConsent()">Accept analytics</button>
+    <button class="cookie-banner__btn cookie-banner__btn--decline" type="button" onclick="declineCookieConsent()">Decline</button>
+  </div>
+</div>
+
+<!-- ═══════════════ LEGAL PAGES ═══════════════ -->
+<div class="page" id="page-privacy-policy">
+  <section class="legal-page">
+    <div class="legal-shell">
+      <div class="legal-hero reveal">
+        <div class="legal-hero__card">
+          <span class="legal-kicker">Privacy Policy</span>
+          <h1 class="legal-title">How Smiles and Postcards handles visitor data.</h1>
+          <p class="legal-intro">This page explains what information may be collected when someone uses the site, why it is collected, and how it is used to keep the experience functional, measurable, and easier to improve.</p>
+        </div>
+        <aside class="legal-summary">
+          <div class="legal-summary__label">Last Updated</div>
+          <div class="legal-summary__value">May 15, 2026</div>
+          <p>Questions about privacy can be routed through the site contact channel before any personal request is processed.</p>
+        </aside>
+      </div>
+
+      <div class="legal-grid reveal">
+        <section class="legal-panel">
+          <h2>What may be collected</h2>
+          <div class="legal-highlight-list">
+            <div class="legal-highlight"><strong>Usage data</strong><span>Page views, route changes, and interaction events such as clicks on navigation, cards, and calls to action.</span></div>
+            <div class="legal-highlight"><strong>Technical data</strong><span>Browser, device, language, referring page, and approximate location inferred from IP by platform providers.</span></div>
+            <div class="legal-highlight"><strong>Optional input</strong><span>Information visitors choose to submit in forms, search boxes, or account areas.</span></div>
+          </div>
+        </section>
+
+        <section class="legal-panel">
+          <h2>How that information is used</h2>
+          <ul>
+            <li>To understand which pages, stories, and recommendation paths are actually helpful to readers.</li>
+            <li>To maintain site reliability, prevent abuse, and debug broken flows.</li>
+            <li>To improve editorial decisions, search experiences, and navigation over time.</li>
+          </ul>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Analytics and third-party services</h2>
+          <p>The site uses Firebase services, including analytics, to measure usage and understand behavior patterns such as page visits and interaction events. Third-party providers may process technical information needed to deliver hosting, storage, and analytics features.</p>
+          <p>Collected information is used in aggregate wherever possible and is not intended to identify a visitor personally unless that visitor explicitly provides personal information through a separate contact or account workflow.</p>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Retention and requests</h2>
+          <p>Data is retained only for as long as it is reasonably useful for security, product improvement, legal compliance, or support. If a visitor wants to ask about access, correction, or deletion of personal information they submitted directly, they should use the site’s contact method and include enough context for the request to be verified.</p>
+        </section>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__left">
+        <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+        <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+      </div>
+      <div class="footer__right">
+        <div class="footer__eyebrow">Legal</div>
+        <div class="footer__links">
+          <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+          <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+          <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+        </div>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<div class="page" id="page-terms-and-conditions">
+  <section class="legal-page">
+    <div class="legal-shell">
+      <div class="legal-hero reveal">
+        <div class="legal-hero__card">
+          <span class="legal-kicker">Terms &amp; Conditions</span>
+          <h1 class="legal-title">The basic rules for using Smiles and Postcards.</h1>
+          <p class="legal-intro">These terms explain what this site offers, what visitors can reasonably rely on, and the boundaries around editorial content, third-party links, and acceptable use.</p>
+        </div>
+        <aside class="legal-summary">
+          <div class="legal-summary__label">Last Updated</div>
+          <div class="legal-summary__value">May 15, 2026</div>
+          <p>Using the site means accepting the current terms in effect at the time of access.</p>
+        </aside>
+      </div>
+
+      <div class="legal-grid reveal">
+        <section class="legal-panel">
+          <h2>Editorial use only</h2>
+          <p>Travel guides, recommendations, budgets, and seasonal suggestions are provided for informational and editorial purposes. They are not guarantees of availability, pricing, safety, or suitability for any specific traveler or situation.</p>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Use of the site</h2>
+          <ul>
+            <li>Do not misuse the site, interfere with its operation, or attempt to access restricted systems without authorization.</li>
+            <li>Do not copy, scrape, republish, or redistribute substantial site content in a way that misrepresents ownership or authorship.</li>
+            <li>Do not rely on the site as a substitute for local laws, travel advisories, visa guidance, or emergency planning.</li>
+          </ul>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Third-party content and links</h2>
+          <p>The site may reference external services, images, locations, businesses, or tools. Those third parties operate independently, and Smiles and Postcards is not responsible for their availability, content, pricing, or privacy practices.</p>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Changes and availability</h2>
+          <p>Content, features, routes, and data sources may change without notice. The site may be updated, paused, or removed at any time, especially while editorial systems, recommendations, or analytics infrastructure are still evolving.</p>
+        </section>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__left">
+        <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+        <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+      </div>
+      <div class="footer__right">
+        <div class="footer__eyebrow">Legal</div>
+        <div class="footer__links">
+          <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+          <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+          <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+        </div>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<div class="page" id="page-cookie-consent">
+  <section class="legal-page">
+    <div class="legal-shell">
+      <div class="legal-hero reveal">
+        <div class="legal-hero__card">
+          <span class="legal-kicker">Cookie Consent</span>
+          <h1 class="legal-title">What cookies do here, and how consent is meant to work.</h1>
+          <p class="legal-intro">This page explains the categories of cookies or similar technologies the site may use, what each category supports, and what visitors should understand before optional analytics are enabled.</p>
+        </div>
+        <aside class="legal-summary">
+          <div class="legal-summary__label">Last Updated</div>
+          <div class="legal-summary__value">May 15, 2026</div>
+          <p>Essential cookies may be required for core site operation. Optional analytics should only be enabled after a clear visitor choice.</p>
+        </aside>
+      </div>
+
+      <div class="legal-grid reveal">
+        <section class="legal-panel">
+          <h2>Cookie categories</h2>
+          <div class="legal-highlight-list">
+            <div class="legal-highlight"><strong>Essential</strong><span>Required for routing, basic functionality, security, and remembering core interface state.</span></div>
+            <div class="legal-highlight"><strong>Analytics</strong><span>Used to understand visits, clicks, and engagement patterns so the site can improve.</span></div>
+            <div class="legal-highlight"><strong>Preference</strong><span>May remember user choices such as interface behavior, dismissed prompts, or filtering preferences.</span></div>
+          </div>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Consent expectations</h2>
+          <p>Visitors should be told, in plain language, what optional tracking is used and what happens if they accept or decline. Consent should be recorded before non-essential analytics or marketing technologies are activated.</p>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Managing preferences</h2>
+          <p>Visitors can clear or block cookies through browser controls. If a consent management interface is present in the future, it should allow people to revisit or change their choice without friction.</p>
+        </section>
+
+        <section class="legal-panel">
+          <h2>Current implementation note</h2>
+          <p>The site now uses a live consent banner for analytics choices. If a broader preference center is added later, this page should stay aligned with the actual behavior implemented in the product.</p>
+        </section>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__left">
+        <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+        <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+      </div>
+      <div class="footer__right">
+        <div class="footer__eyebrow">Legal</div>
+        <div class="footer__links">
+          <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+          <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+          <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+        </div>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   STATIC DATA — BLOG POSTS
+   ═══════════════════════════════════════════ */
+const BLOGS = [];
+
+const DEFAULT_FILTERS = [
+  { label: 'All', tag: 'all' },
+  { label: 'Europe', tag: 'europe' },
+  { label: 'Asia', tag: 'asia' },
+  { label: 'Food', tag: 'food' },
+  { label: 'Budget', tag: 'budget' },
+  { label: 'Culture', tag: 'culture' }
+];
+let FILTERS = [...DEFAULT_FILTERS];
+const HOME_FILTER_ALIASES = {
+  food: ['food', 'foodie', 'culinary', 'street-food', 'food-and-drink', 'gastronomy'],
+  budget: ['budget', 'affordable', 'cheap', 'backpacking', 'backpacker'],
+  culture: ['culture', 'cultural', 'heritage', 'historic', 'history', 'museum', 'art'],
+  europe: ['europe'],
+  asia: ['asia']
+};
+const CONTINENT_TAGS = ['africa', 'antarctica', 'asia', 'europe', 'north-america', 'south-america', 'oceania'];
+const CONTINENT_ALIASES = {
+  africa: 'africa',
+  antarctica: 'antarctica',
+  asia: 'asia',
+  europe: 'europe',
+  oceania: 'oceania',
+  australia: 'oceania',
+  'north-america': 'north-america',
+  northamerica: 'north-america',
+  'south-america': 'south-america',
+  southamerica: 'south-america'
+};
+const COUNTRY_TO_CONTINENT = {
+  india: 'asia',
+  japan: 'asia',
+  thailand: 'asia',
+  indonesia: 'asia',
+  vietnam: 'asia',
+  singapore: 'asia',
+  malaysia: 'asia',
+  china: 'asia',
+  nepal: 'asia',
+  'sri-lanka': 'asia',
+  uae: 'asia',
+  netherlands: 'europe',
+  'czech-republic': 'europe',
+  czechia: 'europe',
+  france: 'europe',
+  italy: 'europe',
+  spain: 'europe',
+  portugal: 'europe',
+  germany: 'europe',
+  hungary: 'europe',
+  austria: 'europe',
+  greece: 'europe',
+  switzerland: 'europe',
+  belgium: 'europe',
+  croatia: 'europe',
+  'united-kingdom': 'europe',
+  uk: 'europe',
+  ireland: 'europe',
+  norway: 'europe',
+  sweden: 'europe',
+  finland: 'europe',
+  denmark: 'europe',
+  usa: 'north-america',
+  'united-states': 'north-america',
+  canada: 'north-america',
+  mexico: 'north-america',
+  brazil: 'south-america',
+  peru: 'south-america',
+  argentina: 'south-america',
+  chile: 'south-america',
+  colombia: 'south-america',
+  morocco: 'africa',
+  egypt: 'africa',
+  'south-africa': 'africa',
+  kenya: 'africa',
+  tanzania: 'africa',
+  australia: 'oceania',
+  'new-zealand': 'oceania'
+};
+
+let activeFilter = 'all';
+let advancedFilters = {
+  continent: 'all',
+  country: 'all',
+  budgetRange: 'all',
+  itineraryLength: 'all',
+  travelStyle: 'all',
+  smartScore: 'all',
+  smartScoreMin: 'all',
+  finalScore: 'all'
+};
+const SMART_SCORE_OPTIONS = [
+  { key: 'walkability', label: 'Walkability' },
+  { key: 'affordability', label: 'Affordability' },
+  { key: 'safety', label: 'Safety' },
+  { key: 'food', label: 'Food' },
+  { key: 'culture', label: 'Culture' },
+  { key: 'nightlife', label: 'Nightlife' },
+  { key: 'nature', label: 'Nature' },
+  { key: 'connectivity', label: 'Connectivity' },
+  { key: 'familyFriendly', label: 'Family Friendly' }
+];
+const SMART_SCORE_MIN_OPTIONS = ['7', '8', '9'];
+const FINAL_SCORE_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: '7.5', label: 'Strong Match 7.5+' },
+  { value: '8', label: 'Great Match 8+' },
+  { value: '8.5', label: 'Best Match 8.5+' }
+];
+const CURRENCY_SYMBOLS = {
+  AED: 'د.إ',
+  AUD: 'A$',
+  BRL: 'R$',
+  CAD: 'C$',
+  CHF: 'CHF',
+  CNY: '¥',
+  CZK: 'Kc',
+  DKK: 'kr',
+  EGP: 'E£',
+  EUR: '€',
+  GBP: '£',
+  HKD: 'HK$',
+  IDR: 'Rp',
+  INR: '₹',
+  JPY: '¥',
+  KES: 'KSh',
+  MAD: 'MAD',
+  MXN: 'MX$',
+  MYR: 'RM',
+  NOK: 'kr',
+  NZD: 'NZ$',
+  PLN: 'zl',
+  SAR: 'SAR',
+  SEK: 'kr',
+  SGD: 'S$',
+  THB: '฿',
+  TRY: '₺',
+  USD: '$',
+  VND: '₫',
+  ZAR: 'R'
+};
+const GENERATED_BLOGS_KEY = 'smilesandpostcards.generatedBlogs.v1';
+const CACHE_VERSION = 'v2';
+const CACHE_TTL_MS = 60 * 60 * 1000;
+const CITIES_DATASET_CACHE_KEY = `smilesandpostcards.cache.${CACHE_VERSION}.citiesDataset`;
+const FILTER_RESULTS_CACHE_KEY = `smilesandpostcards.cache.${CACHE_VERSION}.filterResults`;
+const ANALYTICS_CONSENT_KEY = 'smiles_and_postcards_analytics_consent';
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA0kSb-V1yZuq_j4gUCUC43GD-UK1Wzfh0",
+  authDomain: "travelwebsite-d2716.firebaseapp.com",
+  projectId: "travelwebsite-d2716",
+  storageBucket: "travelwebsite-d2716.firebasestorage.app",
+  messagingSenderId: "1096145054146",
+  appId: "1:1096145054146:web:bf2039f6d149ff31af4e5b",
+  measurementId: "G-HPH5NHBT8M"
+};
+let GENERATED_BLOGS = [];
+let FIRESTORE_DB = null;
+let FIREBASE_AUTH = null;
+let DATA_UNSUBSCRIBES = [];
+let RECOMMENDATIONS = [];
+let activeRecommendationId = '';
+let ANALYTICS_BINDINGS_READY = false;
+let CURRENT_USER = null;
+const DEFAULT_RECOMMENDATION_LIMIT = 8;
+const IMAGE_FALLBACKS = {
+  card: [
+    'https://images.unsplash.com/photo-1519677100203-a0e668c92439?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=2200',
+    'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=2200',
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=2200'
+  ],
+  hero: [
+    'https://images.unsplash.com/photo-1519677100203-a0e668c92439?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=3000',
+    'https://images.unsplash.com/photo-1491557345352-5929e343eb89?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=3000',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=90&w=3000'
+  ],
+  food: 'https://images.unsplash.com/photo-1527631746610-bca00a040d60?w=1200&q=80'
+};
+
+function getAnalyticsApi() {
+  return window.SmileAndPostcardsAnalytics || null;
+}
+
+function trackEventSafe(eventName, params = {}) {
+  if (!eventName) return;
+  getAnalyticsApi()?.trackEvent?.(eventName, params);
+}
+
+function trackFormStartSafe(formName, params = {}) {
+  if (!formName) return;
+  getAnalyticsApi()?.trackFormStart?.(formName, params);
+}
+
+function getCookieConsentStatus() {
+  const analyticsStatus = getAnalyticsApi()?.getConsentStatus?.();
+  if (analyticsStatus) return analyticsStatus;
+  try {
+    return localStorage.getItem(ANALYTICS_CONSENT_KEY) || 'unknown';
+  } catch (error) {
+    return 'unknown';
+  }
+}
+
+function setCookieConsentStatus(status) {
+  const normalized = status === 'granted' ? 'granted' : 'denied';
+  getAnalyticsApi()?.setConsentStatus?.(normalized);
+  try {
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, normalized);
+  } catch (error) {
+    console.info('Unable to persist analytics consent status locally.', error);
+  }
+  return normalized;
+}
+
+function updateCookieBanner() {
+  const banner = document.getElementById('cookie-banner');
+  if (!banner) return;
+  banner.classList.toggle('is-hidden', getCookieConsentStatus() !== 'unknown');
+}
+
+function acceptCookieConsent() {
+  setCookieConsentStatus('granted');
+  updateCookieBanner();
+  trackEventSafe('cookie_consent_updated', { status: 'granted' });
+}
+
+function declineCookieConsent() {
+  setCookieConsentStatus('denied');
+  updateCookieBanner();
+}
+
+function extractTrackingParams(element) {
+  return Object.entries(element?.dataset || {}).reduce((params, [key, value]) => {
+    if (!key.startsWith('trackParam') || value == null || value === '') return params;
+    const normalizedKey = key.slice('trackParam'.length);
+    const paramName = normalizedKey.charAt(0).toLowerCase() + normalizedKey.slice(1);
+    params[paramName] = value;
+    return params;
+  }, {});
+}
+
+function initAnalyticsBindings() {
+  if (ANALYTICS_BINDINGS_READY) return;
+  ANALYTICS_BINDINGS_READY = true;
+
+  document.addEventListener('click', event => {
+    const tracked = event.target.closest('[data-track-event]');
+    if (!tracked) return;
+    trackEventSafe(tracked.dataset.trackEvent, extractTrackingParams(tracked));
+  });
+
+  document.addEventListener('focusin', event => {
+    const tracked = event.target.closest('[data-track-form-start]');
+    if (!tracked) return;
+    trackFormStartSafe(tracked.dataset.trackFormStart, {
+      location: tracked.dataset.trackFormLocation || 'page'
+    });
+  });
+}
+
+function updateAuthUi() {
+  const signInBtn = document.getElementById('googleSignInBtn');
+  const signOutBtn = document.getElementById('googleSignOutBtn');
+  if (signInBtn) signInBtn.classList.toggle('is-hidden', Boolean(CURRENT_USER));
+  if (signOutBtn) signOutBtn.classList.toggle('is-hidden', !CURRENT_USER);
+
+  const gateStatus = document.getElementById('recommendations-gate-status');
+  if (gateStatus) {
+    const environmentMessage = getFirebaseAuthEnvironmentMessage();
+    gateStatus.textContent = CURRENT_USER
+      ? `Signed in as ${CURRENT_USER.email || 'your Google account'}.`
+      : (environmentMessage || 'You need to be signed in to continue.');
+  }
+}
+
+function renderRecommendationsAccess() {
+  const gate = document.getElementById('recommendations-gate');
+  const content = document.getElementById('recommendations-content');
+  if (!gate || !content) return;
+  gate.classList.toggle('is-hidden', Boolean(CURRENT_USER));
+  content.classList.toggle('is-hidden', !CURRENT_USER);
+  updateAuthUi();
+}
+
+function updateDocumentTitle(page, param) {
+  if (page === 'recommendations') {
+    document.title = 'Smiles and Postcards — Recommendations';
+    return;
+  }
+
+  if (page === 'about') {
+    document.title = 'About — Smiles and Postcards';
+    return;
+  }
+
+  if (page === 'privacy-policy') {
+    document.title = 'Privacy Policy — Smiles and Postcards';
+    return;
+  }
+
+  if (page === 'terms-and-conditions') {
+    document.title = 'Terms & Conditions — Smiles and Postcards';
+    return;
+  }
+
+  if (page === 'cookie-consent') {
+    document.title = 'Cookie Consent — Smiles and Postcards';
+    return;
+  }
+
+  if (page === 'blog') {
+    const blog = getAllBlogs().find(item => item.id === param);
+    document.title = blog?.title
+      ? `${blog.title} — Smiles and Postcards`
+      : 'Smiles and Postcards — Story';
+    return;
+  }
+
+  document.title = 'Smiles and Postcards — Travel Stories Worth Following';
+}
+
+function getCurrentPageAnalyticsContext() {
+  const hash = window.location.hash || '';
+  const pagePath = `${window.location.pathname}${window.location.search}${hash}` || '/';
+  return {
+    page_title: document.title,
+    page_location: window.location.href,
+    page_path: pagePath
+  };
+}
+
+function getRecommendationIntents() {
+  return Array.isArray(window.SMILESANDPOSTCARDS_RECOMMENDATION_INTENTS) ? window.SMILESANDPOSTCARDS_RECOMMENDATION_INTENTS : [];
+}
+
+function isFirebaseConfigured() {
+  return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.includes('PASTE_') && window.firebase;
+}
+
+function isStorageAvailable() {
+  try {
+    const key = '__smilesandpostcards_storage_probe__';
+    localStorage.setItem(key, key);
+    localStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function isFirebaseAuthEnvironmentSupported() {
+  const protocol = window.location?.protocol || '';
+  return ['http:', 'https:', 'chrome-extension:'].includes(protocol) && isStorageAvailable();
+}
+
+function getFirebaseAuthEnvironmentMessage() {
+  if (isFirebaseAuthEnvironmentSupported()) return '';
+  const protocol = window.location?.protocol || 'unknown';
+  if (!['http:', 'https:', 'chrome-extension:'].includes(protocol)) {
+    return `Firebase Google sign-in is only available over http or https. The app is currently running from ${protocol}. Open it via localhost or a deployed URL to use login.`;
+  }
+  return 'Firebase Google sign-in requires browser storage to be enabled. Please enable local storage/cookies for this site and try again.';
+}
+
+function getFirebaseAuth() {
+  if (!isFirebaseConfigured() || !firebase.auth || !isFirebaseAuthEnvironmentSupported()) return null;
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  if (!FIREBASE_AUTH) {
+    FIREBASE_AUTH = firebase.auth();
+  }
+  return FIREBASE_AUTH;
+}
+
+function getFirestore() {
+  if (!isFirebaseConfigured()) return null;
+  if (!FIRESTORE_DB) {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    FIRESTORE_DB = firebase.firestore();
+  }
+  return FIRESTORE_DB;
+}
+
+async function signInWithGoogle() {
+  const environmentMessage = getFirebaseAuthEnvironmentMessage();
+  if (environmentMessage) {
+    const gateStatus = document.getElementById('recommendations-gate-status');
+    if (gateStatus) gateStatus.textContent = environmentMessage;
+    return;
+  }
+
+  const auth = getFirebaseAuth();
+  if (!auth) {
+    updateAuthUi();
+    const gateStatus = document.getElementById('recommendations-gate-status');
+    if (gateStatus) gateStatus.textContent = 'Firebase Auth is not configured yet.';
+    return;
+  }
+
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
+  try {
+    await auth.signInWithPopup(provider);
+  } catch (error) {
+    const message = error?.code === 'auth/operation-not-supported-in-this-environment'
+      ? getFirebaseAuthEnvironmentMessage() || 'Firebase Google sign-in is not supported in this environment.'
+      : (error?.message || 'Google sign-in was not completed.');
+    const gateStatus = document.getElementById('recommendations-gate-status');
+    if (gateStatus) gateStatus.textContent = message;
+  }
+}
+
+async function signOutPublicUser() {
+  try {
+    await getFirebaseAuth()?.signOut?.();
+  } catch (error) {
+    console.warn('Unable to sign out public user.', error);
+  }
+}
+
+function watchPublicAuth() {
+  const auth = getFirebaseAuth();
+  if (!auth?.onAuthStateChanged) {
+    const gateStatus = document.getElementById('recommendations-gate-status');
+    const environmentMessage = getFirebaseAuthEnvironmentMessage();
+    if (gateStatus && environmentMessage) gateStatus.textContent = environmentMessage;
+    renderRecommendationsAccess();
+    return;
+  }
+
+  auth.onAuthStateChanged(async user => {
+    CURRENT_USER = user || null;
+    if (CURRENT_USER) {
+      await loadRecommendations();
+    } else {
+      RECOMMENDATIONS = [];
+      activeRecommendationId = '';
+    }
+    renderRecommendationsAccess();
+    if (CURRENT_USER) {
+      renderRecommendationGrid();
+      renderRecommendationDetail();
+    }
+    if (!CURRENT_USER && document.getElementById('page-recommendations')?.classList.contains('active')) {
+      const gateStatus = document.getElementById('recommendations-gate-status');
+      if (gateStatus) gateStatus.textContent = 'You have been signed out. Sign in again to view recommendations.';
+    }
+  });
+}
+
+function getGeneratedBlogs() {
+  if (GENERATED_BLOGS.length) return GENERATED_BLOGS;
+  const cachedDataset = readCitiesDatasetCache();
+  if (cachedDataset?.length) return cachedDataset;
+  try {
+    const stored = JSON.parse(localStorage.getItem(GENERATED_BLOGS_KEY) || '[]');
+    return Array.isArray(stored) ? stored : [];
+  } catch (error) {
+    console.warn('Unable to load generated Smiles and Postcards posts.', error);
+    return [];
+  }
+}
+
+function getAllBlogs() {
+  return [...BLOGS, ...getGeneratedBlogs()];
+}
+
+function getCityId(blog) {
+  return blog?.cityId || blog?.id || '';
+}
+
+function slugify(value) {
+  return String(value || 'destination')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'destination';
+}
+
+function slugifyOptional(value) {
+  if (value == null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function readJsonStorage(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (error) {
+    console.warn(`Unable to read local cache for ${key}.`, error);
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn(`Unable to write local cache for ${key}.`, error);
+  }
+}
+
+function removeStorageKey(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.warn(`Unable to clear local cache for ${key}.`, error);
+  }
+}
+
+function readCitiesDatasetCache() {
+  const entry = readJsonStorage(CITIES_DATASET_CACHE_KEY);
+  if (!entry || entry.version !== CACHE_VERSION || !Array.isArray(entry.value)) return null;
+  if (Number(entry.expiresAt || 0) <= Date.now()) {
+    removeStorageKey(CITIES_DATASET_CACHE_KEY);
+    return null;
+  }
+  return entry.value;
+}
+
+function writeCitiesDatasetCache(value) {
+  writeJsonStorage(CITIES_DATASET_CACHE_KEY, {
+    version: CACHE_VERSION,
+    cachedAt: Date.now(),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    value
+  });
+}
+
+function readFilterResultsCache() {
+  const entry = readJsonStorage(FILTER_RESULTS_CACHE_KEY, {});
+  if (!entry || entry.version !== CACHE_VERSION || typeof entry.items !== 'object' || !entry.items) {
+    return {};
+  }
+
+  const next = {};
+  Object.entries(entry.items).forEach(([key, item]) => {
+    if (!item || !Array.isArray(item.value)) return;
+    if (Number(item.expiresAt || 0) <= Date.now()) return;
+    next[key] = item;
+  });
+
+  if (Object.keys(next).length !== Object.keys(entry.items).length) {
+    writeJsonStorage(FILTER_RESULTS_CACHE_KEY, {
+      version: CACHE_VERSION,
+      items: next
+    });
+  }
+
+  return next;
+}
+
+function writeFilterResultsCache(items) {
+  writeJsonStorage(FILTER_RESULTS_CACHE_KEY, {
+    version: CACHE_VERSION,
+    items
+  });
+}
+
+function clearFilterResultsCache() {
+  removeStorageKey(FILTER_RESULTS_CACHE_KEY);
+}
+
+function buildFilterCacheKey() {
+  return `${CACHE_VERSION}:${JSON.stringify({
+    activeFilter,
+    advancedFilters
+  })}`;
+}
+
+function getCachedFilterResult(cacheKey) {
+  return readFilterResultsCache()[cacheKey]?.value || null;
+}
+
+function setCachedFilterResult(cacheKey, value) {
+  const items = readFilterResultsCache();
+  items[cacheKey] = {
+    cachedAt: Date.now(),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    value
+  };
+  writeFilterResultsCache(items);
+}
+
+function normalizeContinentValue(value) {
+  const normalized = slugify(value);
+  return CONTINENT_ALIASES[normalized] || '';
+}
+
+function inferContinentTag(country, tags, city, explicitContinent) {
+  const explicit = normalizeContinentValue(explicitContinent);
+  if (explicit) return explicit;
+  const existing = ensureArray(tags).map(slugify).find(tag => CONTINENT_TAGS.includes(tag));
+  if (existing) return existing;
+  const countryKey = slugify(country);
+  if (COUNTRY_TO_CONTINENT[countryKey]) return COUNTRY_TO_CONTINENT[countryKey];
+  const cityKey = slugify(city);
+  if (COUNTRY_TO_CONTINENT[cityKey]) return COUNTRY_TO_CONTINENT[cityKey];
+  return null;
+}
+
+function normalizeTags(country, rawTags, city, explicitContinent) {
+  const tags = ensureArray(rawTags).map(slugify).filter(Boolean);
+  const unique = [...new Set(tags)];
+  const continent = inferContinentTag(country, unique, city, explicitContinent);
+  if (continent && !unique.includes(continent)) unique.unshift(continent);
+  return unique;
+}
+
+function formatWalkScore(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/\d+/);
+  if (!match) return '80/100';
+  const numeric = Math.max(0, Math.min(100, Number(match[0])));
+  return `${numeric}/100`;
+}
+
+function clampScore(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(1, Math.min(10, numeric));
+}
+
+function getCurrencySymbol(currency) {
+  return CURRENCY_SYMBOLS[String(currency || '').toUpperCase()] || '';
+}
+
+function deriveBudgetSymbol(blog) {
+  return '$';
+}
+
+function formatUsdDisplay(value, fallback = '$') {
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  const withoutCode = raw.replace(/^(USD|EUR|GBP|JPY|INR|AUD|CAD|CHF|CNY|HKD|MXN|SGD|THB|TRY|VND|ZAR|SAR|NOK|SEK|DKK|PLN|MYR|NZD)\s*/i, '');
+  const withoutSymbol = withoutCode.replace(/^(Rp|CHF|د\.إ|€|£|¥|₹|฿|₫|\$)\s*/u, '');
+  return withoutSymbol.startsWith('$') ? withoutSymbol : `$${withoutSymbol}`;
+}
+
+function formatBudgetPreview(blog) {
+  return formatUsdDisplay(blog?.budget, '$60/day');
+}
+
+function getScoreLabel(score) {
+  if (score >= 9) return 'Excellent';
+  if (score >= 8) return 'High';
+  if (score >= 6.5) return 'Moderate';
+  if (score >= 5) return 'Mixed';
+  return 'Low';
+}
+
+function getVibeIndicator(blog) {
+  const finalScore = Number(blog?.finalScore) || 0;
+  const scores = blog?.scores || {};
+  if (finalScore >= 8.6 && clampScore(scores.affordability, 7) <= 6) return 'Luxury Escape';
+  if (clampScore(scores.nightlife, 6) >= 8 && blog?.experience?.pace === 'fast') return 'Fast-Paced City Break';
+  if (clampScore(scores.culture, 8) >= 8 && clampScore(scores.walkability, 7) >= 7) return 'Chill and Cultural';
+  if (clampScore(scores.nature, 6) >= 8) return 'Scenic Slow Reset';
+  if (clampScore(scores.affordability, 7) >= 8 && clampScore(scores.food, 8) >= 8) return 'Budget Foodie Adventure';
+  if (clampScore(scores.safety, 7) >= 8 && clampScore(scores.familyFriendly, 7) >= 8) return 'Easygoing Family Escape';
+  return finalScore >= 8 ? 'Well-Rounded City Escape' : 'Curious Urban Detour';
+}
+
+function getSnapshotSummary(blog) {
+  const scores = blog?.scores || {};
+  return [
+    { label: 'Walkability', value: getScoreLabel(clampScore(scores.walkability, 7)) },
+    { label: 'Food', value: getScoreLabel(clampScore(scores.food, 8)) },
+    { label: 'Safety', value: getScoreLabel(clampScore(scores.safety, 7)) },
+    { label: 'Affordability', value: getScoreLabel(clampScore(scores.affordability, 7)) }
+  ];
+}
+
+function getBreakdownScores(blog) {
+  const scores = blog?.scores || {};
+  return [
+    ['Walkability', clampScore(scores.walkability, 7)],
+    ['Food', clampScore(scores.food, 8)],
+    ['Safety', clampScore(scores.safety, 7)],
+    ['Affordability', clampScore(scores.affordability, 7)],
+    ['Culture', clampScore(scores.culture, 8)],
+    ['Nightlife', clampScore(scores.nightlife, 6)]
+  ];
+}
+
+function computeMatchToTravelStyle(travelStyles) {
+  const count = ensureArray(travelStyles).length;
+  return Math.max(6, Math.min(10, 5 + count));
+}
+
+function computeFinalScore(scores, travelStyles) {
+  const safeScores = scores || {};
+  const finalScore =
+    (clampScore(safeScores.walkability, 7) * 0.15) +
+    (clampScore(safeScores.food, 8) * 0.20) +
+    (clampScore(safeScores.safety, 7) * 0.15) +
+    (clampScore(safeScores.culture, 8) * 0.15) +
+    (clampScore(safeScores.affordability, 7) * 0.15) +
+    (computeMatchToTravelStyle(travelStyles) * 0.20);
+  return Number(finalScore.toFixed(2));
+}
+
+function parseBudgetValue(budget) {
+  const raw = String(budget || '').replace(/,/g, '');
+  const match = raw.match(/(\d+(\.\d+)?)/);
+  return match ? Number(match[1]) : null;
+}
+
+function getBudgetRange(value) {
+  if (value == null) return 'unknown';
+  if (value < 50) return 'budget';
+  if (value <= 120) return 'mid';
+  return 'luxury';
+}
+
+function getItineraryBucket(days) {
+  if (days <= 3) return 'short';
+  if (days <= 6) return 'medium';
+  return 'long';
+}
+
+function getBudgetTier(blog) {
+  const range = getBudgetRange(parseBudgetValue(blog?.budget));
+  if (range === 'budget') return '$';
+  if (range === 'mid') return '$$';
+  if (range === 'luxury') return '$$$';
+  const affordability = clampScore(blog?.scores?.affordability, 7);
+  if (affordability >= 8) return '$';
+  if (affordability >= 6) return '$$';
+  return '$$$';
+}
+
+function normalizeLoadedBlog(blog) {
+  const normalizedScores = {
+    walkability: clampScore(blog?.scores?.walkability, 7),
+    affordability: clampScore(blog?.scores?.affordability, 7),
+    safety: clampScore(blog?.scores?.safety, 7),
+    nightlife: clampScore(blog?.scores?.nightlife, 6),
+    food: clampScore(blog?.scores?.food, 8),
+    culture: clampScore(blog?.scores?.culture, 8),
+    nature: clampScore(blog?.scores?.nature, 6),
+    connectivity: clampScore(blog?.scores?.connectivity, 7),
+    familyFriendly: clampScore(blog?.scores?.familyFriendly, 7)
+  };
+  const normalized = {
+    ...blog,
+    cityId: blog.cityId || blog.id,
+    showOnHome: blog.showOnHome !== false && blog.pinned !== false,
+    pinned: blog.showOnHome !== false && blog.pinned !== false,
+    tags: normalizeTags(blog.country, blog.tags, blog.city, blog?.meta?.continent),
+    stats: blog.stats ? { ...blog.stats, walkScore: formatWalkScore(blog.stats.walkScore) } : blog.stats,
+    meta: {
+      ...(blog.meta || {}),
+      continent: normalizeContinentValue(blog?.meta?.continent) || inferContinentTag(blog.country, blog.tags, blog.city, blog?.meta?.continent) || '',
+      currency: 'USD'
+    },
+    scores: normalizedScores,
+    travelStyles: ensureArray(blog.travelStyles).map(slugify),
+    experience: {
+      pace: blog?.experience?.pace || 'moderate',
+      crowdLevel: blog?.experience?.crowdLevel || 'medium',
+      seasonality: blog?.experience?.seasonality || 'stable',
+      difficulty: blog?.experience?.difficulty || 'easy'
+    },
+    finalScore: Number.isFinite(Number(blog.finalScore)) ? Number(blog.finalScore) : computeFinalScore(normalizedScores, blog.travelStyles),
+    budgetSymbol: '$'
+  };
+  normalized.recommendationProfile = deriveRecommendationProfile(normalized);
+  return normalized;
+}
+
+function normalizePlaceEntity(place, fallbackKind = 'place') {
+  if (!place) return null;
+  if (typeof place === 'string') {
+    return {
+      id: '',
+      cityId: '',
+      kind: fallbackKind,
+      name: place,
+      desc: '',
+      tip: '',
+      cuisine: '',
+      price: '',
+      image: ''
+    };
+  }
+  return {
+    id: place.id || '',
+    cityId: place.cityId || '',
+    kind: place.kind || fallbackKind,
+    name: place.name || place.title || '',
+    desc: place.desc || '',
+    tip: place.tip || '',
+    cuisine: place.cuisine || '',
+    price: place.price || '',
+    image: place.image || ''
+  };
+}
+
+function buildPlacesById(placesSnapshot) {
+  const map = new Map();
+  (placesSnapshot?.docs || []).forEach(doc => {
+    map.set(doc.id, normalizePlaceEntity({ id: doc.id, ...(doc.data() || {}) }, doc.data()?.kind || 'place'));
+  });
+  return map;
+}
+
+function resolvePlaceRefs(refs, placesById, fallbackKind) {
+  return ensureArray(refs)
+    .map(ref => {
+      if (typeof ref === 'string' && placesById.has(ref)) return placesById.get(ref);
+      return normalizePlaceEntity(ref, fallbackKind);
+    })
+    .filter(place => place && place.name);
+}
+
+function resolveItineraryDays(itinerary, placesById) {
+  return ensureArray(itinerary).map(day => {
+    const resolvedSpots = resolvePlaceRefs(day?.spots, placesById, 'itinerary');
+    return {
+      ...day,
+      spots: resolvedSpots.map(place => place.name),
+      spotIds: resolvedSpots.map(place => place.id).filter(Boolean),
+      spotDetails: resolvedSpots
+    };
+  });
+}
+
+function combineCityAndItinerary(cityDoc, itineraryDoc, placesById = new Map()) {
+  const cityData = cityDoc?.data ? cityDoc.data() : cityDoc || {};
+  const itineraryData = itineraryDoc?.data ? itineraryDoc.data() : itineraryDoc || {};
+  return normalizeLoadedBlog({
+    id: cityDoc?.id || cityData.id || itineraryData.cityId,
+    cityId: cityDoc?.id || cityData.id || itineraryData.cityId,
+    ...cityData,
+    days: itineraryData.days ?? cityData.days ?? 3,
+    travelStyles: itineraryData.travelStyles || cityData.travelStyles || [],
+    itinerary: resolveItineraryDays(itineraryData.itinerary || cityData.itinerary || [], placesById),
+    food: resolvePlaceRefs(ensureArray(itineraryData.food).length ? itineraryData.food : cityData.food, placesById, 'food'),
+    gems: resolvePlaceRefs(ensureArray(itineraryData.gems).length ? itineraryData.gems : cityData.gems, placesById, 'gem')
+  });
+}
+
+function buildStructuredBlogs(citiesSnapshot, itinerariesSnapshot, placesSnapshot) {
+  const itineraryByCityId = new Map();
+  const placesById = buildPlacesById(placesSnapshot);
+  (itinerariesSnapshot?.docs || []).forEach(doc => {
+    const data = doc.data() || {};
+    if (!data.cityId) return;
+    const previous = itineraryByCityId.get(data.cityId);
+    if (!previous || getPostSortTime(data) >= getPostSortTime(previous.data())) {
+      itineraryByCityId.set(data.cityId, doc);
+    }
+  });
+  return (citiesSnapshot?.docs || []).map(cityDoc => combineCityAndItinerary(cityDoc, itineraryByCityId.get(cityDoc.id), placesById));
+}
+
+function slugifyList(values) {
+  return ensureArray(values).map(slugify).filter(Boolean);
+}
+
+function getCityLookupKeys(blog) {
+  return [...new Set([
+    slugify(blog?.cityId),
+    slugify(blog?.id),
+    slugify(blog?.city),
+    slugify(`${blog?.city}-${blog?.country}`)
+  ].filter(Boolean))];
+}
+
+function mergeBlogCollections(primaryBlogs, secondaryBlogs) {
+  const merged = [];
+  const seen = new Set();
+  [...ensureArray(primaryBlogs), ...ensureArray(secondaryBlogs)].forEach(blog => {
+    const keys = getCityLookupKeys(blog);
+    if (!keys.length) return;
+    if (keys.some(key => seen.has(key))) return;
+    keys.forEach(key => seen.add(key));
+    merged.push(blog);
+  });
+  return sortPostsByCreatedAt(merged);
+}
+
+const RECOMMENDATION_STYLE_KEYWORDS = {
+  budget: ['budget', 'affordable', 'cheap', 'value', 'backpacking', 'hostel'],
+  backpacking: ['backpacking', 'backpacker', 'hostel', 'budget'],
+  foodie: ['foodie', 'food', 'culinary', 'street-food', 'gastronomy'],
+  romantic: ['romantic', 'honeymoon', 'couples', 'date-night'],
+  solo: ['solo', 'solo-travel', 'independent'],
+  family: ['family', 'kid-friendly', 'kids', 'family-friendly'],
+  party: ['party', 'nightlife', 'clubs', 'bar-hopping'],
+  cultural: ['cultural', 'culture', 'museum', 'heritage', 'historic', 'history'],
+  digital_nomad: ['digital-nomad', 'digital_nomad', 'remote-work', 'coworking', 'wifi'],
+  luxury: ['luxury', 'boutique', 'five-star', 'fine-dining', 'premium']
+};
+
+const RECOMMENDATION_TAG_KEYWORDS = {
+  architecture: ['architecture', 'architectural', 'design'],
+  coastal: ['coastal', 'seaside', 'waterfront', 'beach', 'island'],
+  mountains: ['mountains', 'mountain', 'alpine', 'ski'],
+  offbeat: ['offbeat', 'underrated', 'alternative'],
+  hidden_gems: ['hidden-gems', 'hidden_gems', 'secret-spots', 'local-favorite'],
+  history: ['history', 'historic', 'heritage', 'ancient'],
+  photography: ['photography', 'photo', 'instagrammable', 'picturesque'],
+  scenic: ['scenic', 'views', 'viewpoints', 'landscape'],
+  winter: ['winter', 'snow', 'snowy'],
+  christmas: ['christmas', 'markets', 'festive'],
+  autumn: ['autumn', 'fall', 'foliage'],
+  nature: ['nature', 'hiking', 'outdoors', 'lakes', 'parks'],
+  weekend: ['weekend', 'city-break', 'citybreak', 'short-break'],
+  first_time: ['first-time', 'first_time', 'easy', 'starter'],
+  winter_sun: ['winter-sun', 'winter_sun', 'warm-winter', 'sunny-winter']
+};
+
+const MONTH_TO_SEASON = {
+  jan: 'winter',
+  feb: 'winter',
+  mar: 'spring',
+  apr: 'spring',
+  may: 'spring',
+  jun: 'summer',
+  jul: 'summer',
+  aug: 'summer',
+  sep: 'autumn',
+  oct: 'autumn',
+  nov: 'autumn',
+  dec: 'winter'
+};
+
+function buildRecommendationCanonicalMap(dictionary) {
+  const map = new Map();
+  Object.entries(dictionary).forEach(([canonical, keywords]) => {
+    [canonical, ...keywords].forEach(keyword => {
+      const normalized = slugify(keyword);
+      if (normalized) map.set(normalized, canonical);
+    });
+  });
+  return map;
+}
+
+const RECOMMENDATION_STYLE_CANONICAL_MAP = buildRecommendationCanonicalMap(RECOMMENDATION_STYLE_KEYWORDS);
+const RECOMMENDATION_TAG_CANONICAL_MAP = buildRecommendationCanonicalMap(RECOMMENDATION_TAG_KEYWORDS);
+
+function canonicalizeRecommendationTerms(values, canonicalMap) {
+  return [...new Set(
+    ensureArray(values)
+      .map(value => slugify(value))
+      .filter(Boolean)
+      .map(value => canonicalMap.get(value) || value)
+  )];
+}
+
+function collectRecommendationMatches(sourceTerms, dictionary) {
+  const matches = new Set();
+  Object.entries(dictionary).forEach(([canonical, keywords]) => {
+    const variants = [canonical, ...keywords].map(keyword => slugify(keyword));
+    if (variants.some(keyword => sourceTerms.has(keyword))) matches.add(canonical);
+  });
+  return matches;
+}
+
+function getRecommendationLimit(intent, fallback = DEFAULT_RECOMMENDATION_LIMIT) {
+  const configured = Number(intent?.ranking?.limit);
+  return Number.isFinite(configured) && configured > 0 ? configured : fallback;
+}
+
+function getRecommendationSourceTerms(blog) {
+  const tokens = [
+    ...slugifyList(blog?.travelStyles),
+    ...slugifyList(blog?.tags),
+    ...slugifyList(String(blog?.title || '').split(/\s+/)),
+    ...slugifyList(String(blog?.excerpt || '').split(/\s+/)),
+    ...slugifyList(ensureArray(blog?.highlights).join(' ').split(/\s+/)),
+    ...slugifyList(ensureArray(blog?.warnings).join(' ').split(/\s+/)),
+    slugify(blog?.city),
+    slugify(blog?.country)
+  ];
+  return new Set(tokens);
+}
+
+function deriveSeasonTokens(bestSeason) {
+  const raw = String(bestSeason || '').toLowerCase();
+  const tokens = new Set(slugifyList(raw.split(/[^a-z]+/g)));
+  Object.entries(MONTH_TO_SEASON).forEach(([month, season]) => {
+    if (raw.includes(month)) tokens.add(season);
+  });
+  return [...tokens];
+}
+
+function deriveRecommendationProfile(blog) {
+  const sourceTerms = getRecommendationSourceTerms(blog);
+  const scores = blog?.scores || {};
+  const styles = new Set(canonicalizeRecommendationTerms(blog?.travelStyles, RECOMMENDATION_STYLE_CANONICAL_MAP));
+  const tags = new Set(canonicalizeRecommendationTerms(blog?.tags, RECOMMENDATION_TAG_CANONICAL_MAP));
+  const seasons = new Set(deriveSeasonTokens(blog?.bestSeason));
+  const continent = slugify(blog?.meta?.continent);
+
+  collectRecommendationMatches(sourceTerms, RECOMMENDATION_STYLE_KEYWORDS).forEach(style => styles.add(style));
+  collectRecommendationMatches(sourceTerms, RECOMMENDATION_TAG_KEYWORDS).forEach(tag => tags.add(tag));
+
+  if (clampScore(scores.affordability, 0) >= 8) styles.add('budget');
+  if (clampScore(scores.affordability, 0) >= 8) styles.add('backpacking');
+  if (clampScore(scores.food, 0) >= 8) styles.add('foodie');
+  if (clampScore(scores.culture, 0) >= 8) styles.add('cultural');
+  if (clampScore(scores.culture, 0) >= 8) tags.add('history');
+  if (clampScore(scores.nightlife, 0) >= 8) styles.add('party');
+  if (clampScore(scores.familyFriendly, 0) >= 8) styles.add('family');
+  if (clampScore(scores.nature, 0) >= 8) tags.add('nature');
+  if (clampScore(scores.walkability, 0) >= 8) tags.add('citybreak');
+  if (clampScore(scores.affordability, 0) <= 5 && Number(blog?.finalScore || 0) >= 8) styles.add('luxury');
+  if (slugifyOptional(blog?.experience?.pace) === 'relaxed') tags.add('slow-travel');
+  if (slugifyOptional(blog?.experience?.pace) === 'fast') tags.add('high-energy');
+  if (continent) tags.add(continent);
+
+  return {
+    styles: [...styles],
+    tags: [...tags],
+    seasons: [...seasons],
+    continent,
+    pace: slugifyOptional(blog?.experience?.pace),
+    budgetRange: getBudgetRange(parseBudgetValue(blog?.budget))
+  };
+}
+
+function getRecommendationProfile(blog) {
+  return blog?.recommendationProfile || deriveRecommendationProfile(blog);
+}
+
+function matchesRecommendationFilters(blog, filters = {}) {
+  const profile = getRecommendationProfile(blog);
+  const profileStyles = new Set(canonicalizeRecommendationTerms(profile.styles, RECOMMENDATION_STYLE_CANONICAL_MAP));
+  const profileTags = new Set(canonicalizeRecommendationTerms(profile.tags, RECOMMENDATION_TAG_CANONICAL_MAP));
+  const profileSeasons = new Set(slugifyList(profile.seasons));
+  const targetContinent = slugifyOptional(filters.continent);
+  if (targetContinent && profile.continent !== targetContinent) return false;
+
+  const targetSeason = slugifyOptional(filters.bestSeason);
+  if (targetSeason && !profileSeasons.has(targetSeason)) return false;
+
+  const targetStyles = canonicalizeRecommendationTerms(filters.travelStyles, RECOMMENDATION_STYLE_CANONICAL_MAP);
+  if (targetStyles.length && !targetStyles.some(style => profileStyles.has(style) || profileTags.has(style))) return false;
+
+  const targetTags = canonicalizeRecommendationTerms(filters.tags, RECOMMENDATION_TAG_CANONICAL_MAP);
+  if (targetTags.length && !targetTags.every(tag => profileTags.has(tag) || profileStyles.has(tag))) return false;
+
+  const targetExperience = filters.experience || {};
+  if (Object.entries(targetExperience).some(([key, value]) => slugifyOptional(blog?.experience?.[key]) !== slugifyOptional(value))) return false;
+
+  const targetScores = filters.scores || {};
+  if (Object.entries(targetScores).some(([key, value]) => clampScore(blog?.scores?.[key], 0) < Number(value))) return false;
+
+  return true;
+}
+
+function scoreRecommendationCandidate(blog, intent) {
+  const filters = intent?.filters || {};
+  const ranking = intent?.ranking || {};
+  const profile = getRecommendationProfile(blog);
+  const targetStyles = canonicalizeRecommendationTerms(filters.travelStyles, RECOMMENDATION_STYLE_CANONICAL_MAP);
+  const targetTags = canonicalizeRecommendationTerms(filters.tags, RECOMMENDATION_TAG_CANONICAL_MAP);
+  const blogStyles = new Set(canonicalizeRecommendationTerms(profile.styles, RECOMMENDATION_STYLE_CANONICAL_MAP));
+  const blogTags = new Set(canonicalizeRecommendationTerms(profile.tags, RECOMMENDATION_TAG_CANONICAL_MAP));
+  const profileSeasons = new Set(slugifyList(profile.seasons));
+  const styleMatches = targetStyles.filter(style => blogStyles.has(style) || blogTags.has(style)).length;
+  const tagMatches = targetTags.filter(tag => blogTags.has(tag) || blogStyles.has(tag)).length;
+  const targetScores = filters.scores || {};
+  let score = Number(blog?.finalScore || 0) * 10;
+
+  if (targetStyles.length) score += (styleMatches / targetStyles.length) * 20;
+  if (targetTags.length) score += (tagMatches / targetTags.length) * 16;
+
+  Object.entries(targetScores).forEach(([key, value]) => {
+    const cityScore = clampScore(blog?.scores?.[key], 0);
+    const targetValue = Number(value);
+    score += cityScore >= targetValue
+      ? 12 + Math.min(4, cityScore - targetValue)
+      : Math.max(-8, (cityScore - targetValue) * 3);
+  });
+
+  if (filters.continent && profile.continent === slugifyOptional(filters.continent)) score += 6;
+  if (filters.bestSeason && new Set(slugifyList(profile.seasons)).has(slugifyOptional(filters.bestSeason))) score += 6;
+
+  Object.entries(filters.experience || {}).forEach(([key, value]) => {
+    if (slugifyOptional(blog?.experience?.[key]) === slugifyOptional(value)) score += 6;
+  });
+
+  Object.entries(ranking.scoreWeights || {}).forEach(([key, weight]) => {
+    const numericWeight = Number(weight) || 0;
+    if (!numericWeight) return;
+    if (key === 'finalScore') {
+      score += Number(blog?.finalScore || 0) * numericWeight;
+      return;
+    }
+    score += clampScore(blog?.scores?.[key], 0) * numericWeight;
+  });
+
+  canonicalizeRecommendationTerms(ranking.boostTravelStyles, RECOMMENDATION_STYLE_CANONICAL_MAP).forEach(style => {
+    if (blogStyles.has(style) || blogTags.has(style)) score += 8;
+  });
+  canonicalizeRecommendationTerms(ranking.boostTags, RECOMMENDATION_TAG_CANONICAL_MAP).forEach(tag => {
+    if (blogTags.has(tag) || blogStyles.has(tag)) score += 6;
+  });
+
+  if (ranking.preferBudgetRange && profile.budgetRange === slugifyOptional(ranking.preferBudgetRange)) score += 8;
+  if (ranking.preferPace && slugifyOptional(blog?.experience?.pace) === slugifyOptional(ranking.preferPace)) score += 8;
+  if (ranking.preferSeason && profileSeasons.has(slugifyOptional(ranking.preferSeason))) score += 8;
+  if (ranking.preferContinent && profile.continent === slugifyOptional(ranking.preferContinent)) score += 4;
+
+  return Number(score.toFixed(2));
+}
+
+function buildRecommendationDescription(intent) {
+  const filters = intent?.filters || {};
+  const parts = [];
+  if (filters.continent) parts.push(filters.continent);
+  if (ensureArray(filters.travelStyles).length) parts.push(ensureArray(filters.travelStyles).map(value => value.replace(/_/g, ' ')).join(', '));
+  if (ensureArray(filters.tags).length) parts.push(ensureArray(filters.tags).map(value => value.replace(/_/g, ' ')).join(', '));
+  if (filters.bestSeason) parts.push(`${filters.bestSeason} trips`);
+  if (filters.experience?.pace) parts.push(`${filters.experience.pace} pace`);
+  if (filters.scores && Object.keys(filters.scores).length) {
+    parts.push(Object.entries(filters.scores).map(([key, value]) => `${key} ${value}+`).join(', '));
+  }
+  return parts.length ? `Ranked from ${parts.join(' • ')}.` : 'Ranked from the saved destination dataset.';
+}
+
+function buildRecommendationDocument(intent, blogs, limit = DEFAULT_RECOMMENDATION_LIMIT) {
+  const filteredBlogs = blogs.filter(blog => matchesRecommendationFilters(blog, intent?.filters || {}));
+  const ranked = filteredBlogs
+    .map(blog => ({
+      blog,
+      cityId: blog?.cityId || blog?.id || slugify(blog?.city),
+      score: scoreRecommendationCandidate(blog, intent)
+    }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return Number(b.blog?.finalScore || 0) - Number(a.blog?.finalScore || 0);
+    })
+    .slice(0, getRecommendationLimit(intent, limit));
+
+  return {
+    id: intent.id,
+    title: intent.title,
+    description: buildRecommendationDescription(intent),
+    filters: intent.filters || {},
+    ranking: intent.ranking || {},
+    cityIds: ranked.map(item => item.cityId),
+    rankedCities: ranked.map((item, index) => ({
+      cityId: item.cityId,
+      score: item.score,
+      rank: index + 1,
+      finalScore: Number(item.blog?.finalScore || 0),
+      days: Number(item.blog?.days || 0)
+    })),
+    resultCount: ranked.length,
+    coverCityId: ranked[0]?.cityId || ''
+  };
+}
+
+function normalizeRecommendationDoc(raw) {
+  const item = raw || {};
+  return {
+    id: item.id || slugify(item.title),
+    title: item.title || 'Recommendation Set',
+    description: item.description || buildRecommendationDescription(item),
+    filters: item.filters || {},
+    ranking: item.ranking || {},
+    cityIds: ensureArray(item.cityIds),
+    rankedCities: ensureArray(item.rankedCities),
+    resultCount: Number(item.resultCount || ensureArray(item.cityIds).length || 0),
+    coverCityId: item.coverCityId || ensureArray(item.cityIds)[0] || ''
+  };
+}
+
+async function loadRecommendations() {
+  if (!CURRENT_USER) {
+    RECOMMENDATIONS = [];
+    activeRecommendationId = '';
+    return;
+  }
+
+  const liveRecommendations = getRecommendationIntents().map(intent => normalizeRecommendationDoc(buildRecommendationDocument(intent, getAllBlogs())));
+  try {
+    const db = getFirestore();
+    if (!db) throw new Error('Firebase is not configured yet.');
+    const snapshot = await db.collection('recommendations').get();
+    if (snapshot.docs.length) {
+      const persistedById = new Map(snapshot.docs.map(doc => [doc.id, normalizeRecommendationDoc({ id: doc.id, ...doc.data() })]));
+      RECOMMENDATIONS = liveRecommendations.map(item => {
+        const persisted = persistedById.get(item.id);
+        return persisted ? { ...persisted, ...item } : item;
+      });
+    } else {
+      RECOMMENDATIONS = liveRecommendations;
+    }
+  } catch (error) {
+    console.info('Using local recommendation fallback.', error);
+    RECOMMENDATIONS = liveRecommendations;
+  }
+
+  if (!activeRecommendationId || !RECOMMENDATIONS.some(item => item.id === activeRecommendationId)) {
+    activeRecommendationId = RECOMMENDATIONS[0]?.id || '';
+  }
+}
+
+function shuffleArray(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function hashString(value) {
+  return String(value || '').split('').reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) >>> 0, 0);
+}
+
+function getFallbackImage(type, city) {
+  const pool = IMAGE_FALLBACKS[type] || IMAGE_FALLBACKS.card;
+  if (Array.isArray(pool)) {
+    return pool[hashString(city || type) % pool.length];
+  }
+  return pool;
+}
+
+function attachFallbackImage(img, fallbackType) {
+  if (!img) return;
+  const fallback = getFallbackImage(fallbackType, img.alt || '');
+  if (img.dataset.fallbackApplied === 'true') return;
+  img.dataset.fallbackApplied = 'true';
+  img.src = fallback;
+}
+
+function getPostSortTime(post) {
+  const value = post && post.createdAt;
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortPostsByCreatedAt(posts) {
+  return [...posts].sort((a, b) => getPostSortTime(b) - getPostSortTime(a));
+}
+
+async function loadGeneratedBlogs() {
+  try {
+    const db = getFirestore();
+    if (!db) throw new Error('Firebase is not configured yet.');
+    const [citiesSnapshot, itinerariesSnapshot, placesSnapshot] = await Promise.all([
+      db.collection('cities').get(),
+      db.collection('itineraries').get(),
+      db.collection('places').get()
+    ]);
+    const structuredBlogs = sortPostsByCreatedAt(buildStructuredBlogs(citiesSnapshot, itinerariesSnapshot, placesSnapshot));
+    const postsSnapshot = await db.collection('posts').get();
+    const legacyBlogs = sortPostsByCreatedAt(postsSnapshot.docs.map(doc => normalizeLoadedBlog({ id: doc.id, ...doc.data() })));
+    GENERATED_BLOGS = mergeBlogCollections(structuredBlogs, legacyBlogs);
+    clearFilterResultsCache();
+    writeCitiesDatasetCache(GENERATED_BLOGS);
+    localStorage.setItem(GENERATED_BLOGS_KEY, JSON.stringify(GENERATED_BLOGS));
+  } catch (error) {
+    console.info('Using local generated Smiles and Postcards posts fallback until Firebase is configured.', error);
+    const cachedBlogs = readCitiesDatasetCache();
+    GENERATED_BLOGS = cachedBlogs?.length
+      ? sortPostsByCreatedAt(cachedBlogs.map(normalizeLoadedBlog))
+      : getGeneratedBlogs();
+  }
+}
+
+async function loadHomepageFilters() {
+  try {
+    const db = getFirestore();
+    if (!db) throw new Error('Firebase is not configured yet.');
+    const doc = await db.collection('siteConfig').doc('homepage').get();
+    const filterTags = doc.exists && Array.isArray(doc.data()?.filterTags) && doc.data().filterTags.length
+      ? doc.data().filterTags
+      : DEFAULT_FILTERS.filter(filter => filter.tag !== 'all').map(filter => filter.tag);
+    FILTERS = [
+      { label: 'All', tag: 'all' },
+      ...filterTags.map(tag => ({ label: tag.replace(/-/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()), tag }))
+    ];
+  } catch (error) {
+    console.info('Using default homepage filters.', error);
+    FILTERS = [...DEFAULT_FILTERS];
+  }
+}
+
+function subscribeToGeneratedBlogs() {
+  DATA_UNSUBSCRIBES.forEach(unsub => unsub && unsub());
+  DATA_UNSUBSCRIBES = [];
+}
+
+/* ═══════════════════════════════════════════
+   RENDER FUNCTIONS
+   ═══════════════════════════════════════════ */
+function renderFilters() {
+  const bar = document.getElementById('filter-bar');
+  if (!bar) return;
+
+  bar.innerHTML = FILTERS.map(filter => `
+    <button class="filter-chip ${activeFilter === filter.tag ? 'active' : ''}" type="button" onclick="setFilter('${filter.tag}')">
+      ${filter.label}
+    </button>
+  `).join('');
+}
+
+function getVisibleHomeBlogs() {
+  return getAllBlogs().filter(blog => blog.showOnHome !== false && blog.pinned !== false);
+}
+
+function getCountriesForContinent(blogs, continent) {
+  const scopedBlogs = continent === 'all'
+    ? blogs
+    : blogs.filter(blog => blog?.meta?.continent === continent);
+  return [...new Set(scopedBlogs.map(blog => blog.country).filter(Boolean))].sort();
+}
+
+function renderAdvancedFilters() {
+  const visibleBlogs = getVisibleHomeBlogs();
+  const continents = [...new Set(visibleBlogs.map(blog => blog?.meta?.continent).filter(Boolean))].sort();
+  const countries = getCountriesForContinent(visibleBlogs, advancedFilters.continent);
+  const travelStyles = [...new Set(visibleBlogs.flatMap(blog => ensureArray(blog.travelStyles)).filter(Boolean))].sort();
+
+  const renderOptions = (id, values, current, formatter = value => value) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = [`<option value="all">All</option>`, ...values.map(value => `<option value="${value}" ${current === value ? 'selected' : ''}>${formatter(value)}</option>`)].join('');
+  };
+
+  if (advancedFilters.country !== 'all' && !countries.includes(advancedFilters.country)) {
+    advancedFilters.country = 'all';
+  }
+
+  renderOptions('filter-continent', continents, advancedFilters.continent, value => value.replace(/-/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()));
+  renderOptions('filter-country', countries, advancedFilters.country);
+  renderOptions('filter-budget-range', ['budget', 'mid', 'luxury'], advancedFilters.budgetRange, value => ({ budget: 'Under 50/day', mid: '50-120/day', luxury: '120+/day' }[value]));
+  renderOptions('filter-itinerary', ['short', 'medium', 'long'], advancedFilters.itineraryLength, value => ({ short: '1-3 days', medium: '4-6 days', long: '7+ days' }[value]));
+  renderOptions('filter-travel-style', travelStyles, advancedFilters.travelStyle, value => value.replace(/_/g, ' '));
+  renderOptions('filter-smart-score', SMART_SCORE_OPTIONS.map(option => option.key), advancedFilters.smartScore, value => SMART_SCORE_OPTIONS.find(option => option.key === value)?.label || value);
+  renderOptions('filter-smart-score-min', SMART_SCORE_MIN_OPTIONS, advancedFilters.smartScoreMin, value => `${value}+ on selected score`);
+  renderOptions('filter-final-score', FINAL_SCORE_OPTIONS.slice(1).map(option => option.value), advancedFilters.finalScore, value => FINAL_SCORE_OPTIONS.find(option => option.value === value)?.label || value);
+}
+
+function setFilter(tag) {
+  activeFilter = tag;
+  renderFilters();
+  renderBlogGrid();
+}
+
+function setAdvancedFilter(key, value) {
+  advancedFilters[key] = value;
+  if (key === 'continent') {
+    const countries = getCountriesForContinent(getVisibleHomeBlogs(), value);
+    if (!countries.includes(advancedFilters.country)) {
+      advancedFilters.country = 'all';
+    }
+    renderAdvancedFilters();
+  }
+  renderBlogGrid();
+}
+
+function resetAdvancedFilters() {
+  advancedFilters = {
+    continent: 'all',
+    country: 'all',
+    budgetRange: 'all',
+    itineraryLength: 'all',
+    travelStyle: 'all',
+    smartScore: 'all',
+    smartScoreMin: 'all',
+    finalScore: 'all'
+  };
+  renderAdvancedFilters();
+  renderBlogGrid();
+}
+
+function matchesAdvancedFilters(blog) {
+  const budgetRange = getBudgetRange(parseBudgetValue(blog.budget));
+  const itineraryLength = getItineraryBucket(Number(blog.days) || 0);
+  const travelStyles = ensureArray(blog.travelStyles);
+  const smartScoreValue = advancedFilters.smartScore === 'all'
+    ? null
+    : clampScore(blog?.scores?.[advancedFilters.smartScore], 7);
+  const smartScoreMin = advancedFilters.smartScoreMin === 'all' ? null : Number(advancedFilters.smartScoreMin);
+  const finalScoreMin = advancedFilters.finalScore === 'all' ? null : Number(advancedFilters.finalScore);
+  return (
+    (advancedFilters.continent === 'all' || blog?.meta?.continent === advancedFilters.continent) &&
+    (advancedFilters.country === 'all' || blog.country === advancedFilters.country) &&
+    (advancedFilters.budgetRange === 'all' || budgetRange === advancedFilters.budgetRange) &&
+    (advancedFilters.itineraryLength === 'all' || itineraryLength === advancedFilters.itineraryLength) &&
+    (advancedFilters.travelStyle === 'all' || travelStyles.includes(advancedFilters.travelStyle)) &&
+    (advancedFilters.smartScore === 'all' || smartScoreValue != null) &&
+    (smartScoreMin == null || advancedFilters.smartScore === 'all' || smartScoreValue >= smartScoreMin) &&
+    (finalScoreMin == null || Number(blog.finalScore || 0) >= finalScoreMin)
+  );
+}
+
+function getCardMood(blog) {
+  return getVibeIndicator(blog);
+}
+
+function getCardTripLength(blog) {
+  const days = Number(blog?.days) || 3;
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+function getCardSeason(blog) {
+  return blog.bestSeason ? blog.bestSeason.split(',')[0] : 'Year-round';
+}
+
+function getSearchScore(blog, query) {
+  const city = String(blog.city || '').toLowerCase();
+  const country = String(blog.country || '').toLowerCase();
+  const title = String(blog.title || '').toLowerCase();
+  const excerpt = String(blog.excerpt || '').toLowerCase();
+  const tags = Array.isArray(blog.tags) ? blog.tags.join(' ').toLowerCase() : '';
+
+  if (city.startsWith(query)) return 0;
+  if (city.includes(query)) return 1;
+  if (country.startsWith(query)) return 2;
+  if (country.includes(query)) return 3;
+  if (title.includes(query)) return 4;
+  if (tags.includes(query)) return 5;
+  if (excerpt.includes(query)) return 6;
+  return 7;
+}
+
+function matchesHomeFilter(blog, filterTag) {
+  if (filterTag === 'all') return true;
+
+  const normalizedFilter = slugify(filterTag);
+  const aliases = HOME_FILTER_ALIASES[normalizedFilter] || [normalizedFilter];
+  const profile = getRecommendationProfile(blog);
+  const tokens = new Set([
+    ...ensureArray(blog?.tags).map(slugify),
+    ...ensureArray(blog?.travelStyles).map(slugify),
+    ...ensureArray(profile?.styles).map(slugify),
+    ...ensureArray(profile?.tags).map(slugify),
+    slugify(blog?.meta?.continent),
+    slugify(blog?.country),
+    slugify(blog?.city)
+  ].filter(Boolean));
+
+  if (aliases.some(alias => tokens.has(alias))) return true;
+  if (normalizedFilter === 'food' && clampScore(blog?.scores?.food, 0) >= 8) return true;
+  if (normalizedFilter === 'budget' && getBudgetRange(parseBudgetValue(blog?.budget)) === 'budget') return true;
+  if (normalizedFilter === 'culture' && clampScore(blog?.scores?.culture, 0) >= 8) return true;
+  return false;
+}
+
+function selectBalancedPinnedBlogs(blogs) {
+  const featured = blogs.filter(blog => blog.featured).slice(0, 2);
+  const standard = blogs.filter(blog => !blog.featured).slice(0, 6);
+  return {
+    featured,
+    standard
+  };
+}
+
+function renderCardMarkup(blog, kind = 'standard', animationDelay = 0) {
+  const isFeatured = kind !== 'standard';
+  const layoutClass = isFeatured ? ` blog-card--featured ${kind === 'featured-left' ? 'blog-card--featured-left' : 'blog-card--featured-right'}` : ' blog-card--std';
+  const mood = getCardMood(blog);
+  return `
+    <article class="blog-card${layoutClass}" data-track-event="cta_click" data-track-param-location="home_cards" data-track-param-label="destination_card" data-track-param-city="${escapeHtml(blog.city)}" onclick="navigateTo('blog', '${blog.id}')" ${isFeatured ? '' : `style="animation-delay: ${animationDelay}s"`}>
+      <div class="blog-card__img-wrap">
+        <img class="blog-card__img" src="${blog.image}" alt="${blog.city}" loading="lazy" onerror="attachFallbackImage(this, 'card')">
+      </div>
+      ${isFeatured ? '<div class="blog-card__overlay"></div><span class="blog-card__badge">Editor&apos;s pick</span>' : ''}
+      <div class="blog-card__body">
+        <span class="blog-card__country">${blog.country}</span>
+        <h3 class="blog-card__title">${blog.title}</h3>
+        <p class="blog-card__excerpt">${blog.excerpt}</p>
+        <div class="blog-card__signals">
+          <span class="blog-card__vibe">${mood}</span>
+          <span class="blog-card__context">
+            <span class="blog-card__context-line"><strong>${getCardTripLength(blog)}</strong> · Best in <strong>${getCardSeason(blog)}</strong></span>
+          </span>
+        </div>
+        <div class="blog-card__meta">
+          <strong>Walk ${blog?.scores?.walkability ?? 7}</strong> | <strong>Food ${blog?.scores?.food ?? 8}</strong> | <strong>Safe ${blog?.scores?.safety ?? 7}</strong>
+        </div>
+      </div>
+    </article>`;
+}
+
+function renderBlogGrid() {
+  const grid = document.getElementById('blog-grid');
+  const visibleBlogs = getVisibleHomeBlogs();
+  const blogsById = new Map(visibleBlogs.map(blog => [blog.id, blog]));
+  const cacheKey = buildFilterCacheKey();
+  const cachedIds = getCachedFilterResult(cacheKey);
+  const filteredBlogs = cachedIds
+    ? cachedIds.map(id => blogsById.get(id)).filter(Boolean)
+    : visibleBlogs
+      .filter(blog => matchesHomeFilter(blog, activeFilter) && matchesAdvancedFilters(blog))
+      .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+
+  if (!cachedIds) {
+    setCachedFilterResult(cacheKey, filteredBlogs.map(blog => blog.id));
+  }
+
+  const layout = selectBalancedPinnedBlogs(filteredBlogs);
+  const cards = [
+    ...layout.featured.map((blog, index) => ({ blog, kind: index === 0 ? 'featured-left' : 'featured-right' })),
+    ...layout.standard.map(blog => ({ blog, kind: 'standard' }))
+  ];
+
+  if (cards.length === 0) {
+    grid.innerHTML = `<div class="search-results__empty"><span>No close match yet</span>Try a broader place, season, or travel mood.</div>`;
+    return;
+  }
+  grid.innerHTML = cards.map(({ blog, kind }, i) => renderCardMarkup(blog, kind, i * 0.1)).join('');
+}
+
+function getRecommendationById(id) {
+  return RECOMMENDATIONS.find(item => item.id === id) || null;
+}
+
+function getRecommendationBlogs(recommendation) {
+  if (!recommendation) return [];
+  const blogsById = new Map(getAllBlogs().map(blog => [blog.id, blog]));
+  const blogsByCityId = new Map(getAllBlogs().map(blog => [blog.cityId || blog.id, blog]));
+  return ensureArray(recommendation.cityIds)
+    .map(cityId => blogsById.get(cityId) || blogsByCityId.get(cityId))
+    .filter(blog => matchesRecommendationFilters(blog, recommendation.filters || {}))
+    .filter(Boolean);
+}
+
+function getRecommendationSummaryPills(recommendation) {
+  const filters = recommendation?.filters || {};
+  const pills = [];
+  if (filters.continent) pills.push(filters.continent);
+  ensureArray(filters.travelStyles).forEach(value => pills.push(value.replace(/_/g, ' ')));
+  ensureArray(filters.tags).forEach(value => pills.push(value.replace(/_/g, ' ')));
+  if (filters.bestSeason) pills.push(filters.bestSeason);
+  if (filters.experience?.pace) pills.push(`${filters.experience.pace} pace`);
+  Object.entries(filters.scores || {}).forEach(([key, value]) => pills.push(`${key} ${value}+`));
+  return pills.slice(0, 4);
+}
+
+function renderRecommendationGrid() {
+  const grid = document.getElementById('recommendation-grid');
+  const select = document.getElementById('recommendation-select');
+  if (!grid) return;
+  if (!RECOMMENDATIONS.length) {
+    grid.innerHTML = '<div class="reco-empty">No recommendation sets available yet.</div>';
+    if (select) {
+      select.innerHTML = '<option value="">No routes available yet</option>';
+      select.value = '';
+    }
+    return;
+  }
+
+  if (select) {
+    select.innerHTML = RECOMMENDATIONS.map(item => `<option value="${item.id}">${item.title}</option>`).join('');
+    select.value = activeRecommendationId || RECOMMENDATIONS[0]?.id || '';
+  }
+
+  grid.innerHTML = RECOMMENDATIONS.map((item, index) => `
+    <button class="reco-intent-card ${item.id === activeRecommendationId ? 'active' : ''}" type="button" onclick="setRecommendation('${item.id}')">
+      <div class="reco-intent-card__eyebrow">Intent ${String(index + 1).padStart(2, '0')}</div>
+      <h3 class="reco-intent-card__title">${item.title}</h3>
+      <p class="reco-intent-card__desc">${item.description}</p>
+      <div class="reco-intent-card__meta">
+        ${getRecommendationSummaryPills(item).map(value => `<span class="reco-pill">${value}</span>`).join('')}
+      </div>
+    </button>
+  `).join('');
+}
+
+function renderRecommendationDetail() {
+  const detail = document.getElementById('recommendation-detail');
+  if (!detail) return;
+
+  const recommendation = getRecommendationById(activeRecommendationId);
+  if (!recommendation) {
+    detail.innerHTML = '<div class="reco-empty">Pick a recommendation set to see ranked itineraries.</div>';
+    return;
+  }
+
+  const blogs = getRecommendationBlogs(recommendation);
+  if (!blogs.length) {
+    detail.innerHTML = `
+      <div class="reco-results__header">
+        <div>
+          <div class="reco-results__eyebrow">Curated lane</div>
+          <h2 class="reco-results__title">${recommendation.title}</h2>
+          <p class="reco-results__desc">${recommendation.description}</p>
+        </div>
+      </div>
+      <div class="reco-empty">No cities currently match this intent.</div>
+    `;
+    return;
+  }
+
+  const cards = blogs.map((blog, index) => `
+    <div style="position:relative;">
+      <span class="reco-city-rank">#${index + 1}</span>
+      ${renderCardMarkup(blog, 'standard', index * 0.04)}
+    </div>
+  `).join('');
+
+  detail.innerHTML = `
+      <div class="reco-results__header">
+      <div>
+        <div class="reco-results__eyebrow">Curated lane</div>
+        <h2 class="reco-results__title">${recommendation.title}</h2>
+        <p class="reco-results__desc">${recommendation.description}</p>
+      </div>
+      <div class="reco-results__meta">${blogs.length} ranked cities with itinerary pages ready</div>
+    </div>
+    <div class="reco-intent-card__meta" style="margin-top:1rem;">
+      ${getRecommendationSummaryPills(recommendation).map(value => `<span class="reco-pill">${value}</span>`).join('')}
+    </div>
+    <div class="reco-results__cities">${cards}</div>
+  `;
+}
+
+function setRecommendation(id) {
+  activeRecommendationId = id;
+  renderRecommendationGrid();
+  renderRecommendationDetail();
+  const select = document.getElementById('recommendation-select');
+  if (select && select.value !== id) select.value = id;
+  if (window.location.hash !== `#recommendations/${id}` && document.getElementById('page-recommendations')?.classList.contains('active')) {
+    window.location.hash = `recommendations/${id}`;
+  }
+}
+
+function renderBlogDetail(blogId) {
+  const blog = getAllBlogs().find(b => b.id === blogId);
+  if (!blog) return;
+
+  const container = document.getElementById('page-blog');
+  container.innerHTML = `
+    <!-- Blog Hero -->
+    <section class="blog-hero">
+      <img class="blog-hero__img" src="${blog.heroImage || blog.image}" alt="${blog.city}" onerror="attachFallbackImage(this, 'hero')">
+      <div class="blog-hero__overlay"></div>
+      <div class="blog-hero__content">
+        <a class="blog-hero__back" onclick="navigateTo('home')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Stories
+        </a>
+        <p class="blog-hero__country">${blog.country}</p>
+        <h1 class="blog-hero__title">${blog.title}</h1>
+        <div class="blog-hero__meta">
+          <span class="blog-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            ${blog.days}-day itinerary
+          </span>
+          <span class="blog-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            ${blog.bestSeason}
+          </span>
+      </div>
+    </div>
+  </section>
+
+    ${blog.stats ? `
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stats-bar__inner">
+        <div class="stat">
+          <div class="stat__value">${blog.stats.days}</div>
+          <div class="stat__label">Days</div>
+</div>
+
+        <div class="stat">
+          <div class="stat__value">${getBudgetTier(blog)}</div>
+          <div class="stat__label">Cost Level</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">${blog.stats.bestMonth}</div>
+          <div class="stat__label">Best Month</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">${blog.stats.walkScore}</div>
+          <div class="stat__label">Walkability</div>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- Blog Content -->
+    <div class="blog-content">
+      <div class="blog-main">
+
+        <section class="content-section mobile-guide">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">In This Guide</h2>
+              <p class="content-section__subtitle">Jump straight to the section you need.</p>
+            </div>
+          </div>
+          <div class="mobile-guide__list">
+            ${blog.itinerary && blog.itinerary.length ? `<a class="mobile-guide__item" href="#section-itinerary" onclick="smoothScroll(event, 'section-itinerary')">Itinerary</a>` : ''}
+            ${blog.food && blog.food.length ? `<a class="mobile-guide__item" href="#section-food" onclick="smoothScroll(event, 'section-food')">Food Spots</a>` : ''}
+            ${blog.gems && blog.gems.length ? `<a class="mobile-guide__item" href="#section-gems" onclick="smoothScroll(event, 'section-gems')">Hidden Gems</a>` : ''}
+            ${blog.budgetBreakdown && blog.budgetBreakdown.length ? `<a class="mobile-guide__item" href="#section-budget" onclick="smoothScroll(event, 'section-budget')">Budget Breakdown</a>` : ''}
+            ${(blog.warnings && blog.warnings.length) || (blog.skipIf && blog.skipIf.length) ? `<a class="mobile-guide__item" href="#section-notes" onclick="smoothScroll(event, 'section-notes')">Warnings</a>` : ''}
+          </div>
+        </section>
+
+        ${blog.itinerary && blog.itinerary.length ? `
+        <!-- Itinerary -->
+        <section class="content-section reveal" id="section-itinerary">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">Itinerary</h2>
+              <p class="content-section__subtitle">${blog.days} days of carefully planned wandering</p>
+            </div>
+          </div>
+          <div class="itinerary-tabs" data-itinerary-tabs>
+            <div class="itinerary-tabs__nav" role="tablist" aria-label="Itinerary Days">
+              ${blog.itinerary.map((day, index) => {
+                const dayNumber = getItineraryDayNumber(day, index);
+                return `
+                <button
+                  class="itinerary-tabs__tab ${index === 0 ? 'active' : ''}"
+                  id="itinerary-tab-${index}"
+                  type="button"
+                  role="tab"
+                  aria-controls="itinerary-panel-${index}"
+                  aria-selected="${index === 0 ? 'true' : 'false'}"
+                  aria-label="Show itinerary day ${dayNumber}"
+                  tabindex="${index === 0 ? '0' : '-1'}"
+                  onclick="setItineraryTab(${index})">
+                  ${dayNumber}
+                </button>
+              `;
+              }).join('')}
+            </div>
+            ${blog.itinerary.map((day, index) => {
+              const dayNumber = getItineraryDayNumber(day, index);
+              return `
+              <div
+                class="itinerary-tabs__panel ${index === 0 ? 'active' : ''}"
+                id="itinerary-panel-${index}"
+                data-itinerary-panel="${index}"
+                role="tabpanel"
+                aria-labelledby="itinerary-tab-${index}">
+                <div class="itinerary-tabs__panel-head">
+                  <span class="itinerary-tabs__day">${dayNumber}</span>
+                  <h3 class="itinerary-tabs__title">${day.title}</h3>
+                </div>
+                <p class="itinerary-tabs__text">${day.text}</p>
+                <div class="itinerary-tabs__spots">
+                  ${day.spots.map(s => `<span class="spot-tag">${s}</span>`).join('')}
+                </div>
+              </div>
+            `;
+            }).join('')}
+          </div>
+        </section>
+        ` : ''}
+
+        ${blog.food && blog.food.length ? `
+        <!-- Food Spots -->
+        <section class="content-section reveal" id="section-food">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">Best Food Spots</h2>
+              <p class="content-section__subtitle">Where we actually ate (and went back twice)</p>
+            </div>
+          </div>
+          <div class="food-grid">
+            ${blog.food.map((f, i) => `
+              <div class="food-card">
+                <span class="food-card__index">${String(i + 1).padStart(2, '0')}</span>
+                <div class="food-card__body">
+                  <h3 class="food-card__name">${f.name}</h3>
+                  <span class="food-card__cuisine">${f.cuisine}</span>
+                  <p class="food-card__desc">${f.desc}</p>
+                  <span class="food-card__price">${formatUsdDisplay(f.price)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+        ` : ''}
+
+        ${blog.gems && blog.gems.length ? `
+        <!-- Hidden Gems -->
+        <section class="content-section reveal" id="section-gems">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">Hidden Gems</h2>
+              <p class="content-section__subtitle">The stuff guidebooks don't tell you</p>
+            </div>
+          </div>
+          <div class="gems-list">
+            ${blog.gems.map((g, i) => `
+              <div class="gem-card">
+                <span class="gem-card__number">0${i + 1}</span>
+                <div class="gem-card__content">
+                  <h3 class="gem-card__name">${g.name}</h3>
+                  <p class="gem-card__desc">${g.desc}</p>
+                  <div class="gem-card__tip">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    ${g.tip}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+        ` : ''}
+
+        ${blog.budgetBreakdown && blog.budgetBreakdown.length ? `
+        <!-- Budget -->
+        <section class="content-section reveal" id="section-budget">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">Budget Breakdown</h2>
+              <p class="content-section__subtitle">Typical planning ranges shown in dollars for this trip style</p>
+            </div>
+          </div>
+          <div class="budget-table-wrap">
+            <table class="budget-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Budget</th>
+                  <th>Mid-Range</th>
+                  <th>Luxury</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${blog.budgetBreakdown.map((row, i) => `
+                  <tr class="${i === blog.budgetBreakdown.length - 1 ? 'budget-total' : ''}">
+                    <td class="budget-cat">${row.category}</td>
+                    <td class="budget-val">${formatUsdDisplay(row.budget)}</td>
+                    <td class="budget-val">${formatUsdDisplay(row.mid)}</td>
+                    <td class="budget-val">${formatUsdDisplay(row.luxury)}</td>
+                    <td>${row.notes}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <p class="budget-note">* Budget assumes hostel dorms, local food, walking, and free attractions. Mid-range uses private rooms, sit-down restaurants, and paid sights. Luxury includes boutique hotels and fine dining.</p>
+        </section>
+        ` : ''}
+
+        ${(blog.warnings && blog.warnings.length) || (blog.skipIf && blog.skipIf.length) ? `
+        <section class="content-section reveal" id="section-notes">
+          <div class="content-section__header">
+            <div class="content-section__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div>
+              <h2 class="content-section__title">Warnings and Skip If</h2>
+              <p class="content-section__subtitle">A first-iteration reality check before you commit</p>
+            </div>
+          </div>
+          ${blog.warnings && blog.warnings.length ? `
+          <details class="collapsible-note" open>
+            <summary>Warnings</summary>
+            <div class="collapsible-note__body">
+              <ul class="collapsible-note__list">
+                ${blog.warnings.map(item => `<li>${item}</li>`).join('')}
+              </ul>
+            </div>
+          </details>
+          ` : ''}
+          ${blog.skipIf && blog.skipIf.length ? `
+          <details class="collapsible-note">
+            <summary>Skip If</summary>
+            <div class="collapsible-note__body">
+              <ul class="collapsible-note__list">
+                ${blog.skipIf.map(item => `<li>${item}</li>`).join('')}
+              </ul>
+            </div>
+          </details>
+          ` : ''}
+        </section>
+        ` : ''}
+
+      </div>
+
+      <!-- Sidebar -->
+      <aside class="blog-sidebar">
+        ${blog.itinerary && blog.itinerary.length ? `
+        <div class="sidebar-card sidebar-card--toc">
+          <h4 class="sidebar-card__title">In This Guide</h4>
+          <ul class="toc-list">
+            ${blog.itinerary && blog.itinerary.length ? `<li><a href="#section-itinerary" onclick="smoothScroll(event, 'section-itinerary')">Itinerary</a></li>` : ''}
+            ${blog.food && blog.food.length ? `<li><a href="#section-food" onclick="smoothScroll(event, 'section-food')">Best Food Spots</a></li>` : ''}
+            ${blog.gems && blog.gems.length ? `<li><a href="#section-gems" onclick="smoothScroll(event, 'section-gems')">Hidden Gems</a></li>` : ''}
+            ${blog.budgetBreakdown && blog.budgetBreakdown.length ? `<li><a href="#section-budget" onclick="smoothScroll(event, 'section-budget')">Budget Breakdown</a></li>` : ''}
+            ${(blog.warnings && blog.warnings.length) || (blog.skipIf && blog.skipIf.length) ? `<li><a href="#section-notes" onclick="smoothScroll(event, 'section-notes')">Warnings and Skip If</a></li>` : ''}
+          </ul>
+        </div>
+        ` : ''}
+
+        <div class="sidebar-card">
+          <h4 class="sidebar-card__title">City Snapshot</h4>
+          <div class="snapshot-summary">
+            ${getSnapshotSummary(blog).map(item => `<span class="snapshot-pill"><strong>${item.label}:</strong> ${item.value}</span>`).join('')}
+          </div>
+          <div class="score-breakdown">
+            ${getBreakdownScores(blog).map(([label, score]) => `
+              <div class="score-bar__row">
+                <div class="score-bar__top">
+                  <span class="score-bar__label">${label}</span>
+                  <span class="score-bar__value">${score}</span>
+                </div>
+                <div class="score-bar__track">
+                  <div class="score-bar__fill" style="--score-width: ${score * 10}%"></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="sidebar-card">
+          <h4 class="sidebar-card__title">Tags</h4>
+          <div class="sidebar-tags">
+            ${(blog.tags || []).map(t => `<span class="sidebar-tag">${t}</span>`).join('')}
+          </div>
+        </div>
+
+        <!--
+        <div class="sidebar-card">
+          <h4 class="sidebar-card__title">Written By</h4>
+          <div class="sidebar-author">
+            <img class="sidebar-author__avatar" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80" alt="Author">
+            <div>
+              <div class="sidebar-author__name">Alex Wanderfeld</div>
+              <div class="sidebar-author__bio">Slow traveler. Fast eater. Has strong opinions about coffee.</div>
+            </div>
+          </div>
+        </div>
+        -->
+      </aside>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer__left">
+        <div class="footer__brand">Smiles and <span>Postcards</span> © 2026</div>
+        <p class="footer__note">Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.</p>
+      </div>
+      <div class="footer__right">
+        <div class="footer__eyebrow">Legal</div>
+        <div class="footer__links">
+          <a href="#privacy-policy" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="privacy_policy" onclick="navigateTo('privacy-policy')">Privacy Policy</a>
+          <a href="#terms-and-conditions" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="terms_and_conditions" onclick="navigateTo('terms-and-conditions')">Terms &amp; Conditions</a>
+          <a href="#cookie-consent" data-track-event="navigation_click" data-track-param-location="footer" data-track-param-label="cookie_consent" onclick="navigateTo('cookie-consent')">Cookie Consent</a>
+        </div>
+      </div>
+    </footer>
+  `;
+
+  initRevealObserver();
+  setItineraryTab(0);
+}
+
+function setItineraryTab(index) {
+  const tabRoot = document.querySelector('[data-itinerary-tabs]');
+  if (!tabRoot) return;
+  const tabs = [...tabRoot.querySelectorAll('.itinerary-tabs__tab')];
+  const panels = [...tabRoot.querySelectorAll('[data-itinerary-panel]')];
+  tabs.forEach((tab, tabIndex) => {
+    const isActive = tabIndex === index;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+    tab.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+  panels.forEach((panel, panelIndex) => {
+    panel.classList.toggle('active', panelIndex === index);
+  });
+}
+
+function getItineraryDayNumber(day, index) {
+  const match = String(day?.day ?? '').match(/\d+/);
+  return match ? match[0] : String(index + 1);
+}
+
+/* ═══════════════════════════════════════════
+   SEARCH
+   ═══════════════════════════════════════════ */
+function getSearchMatches(query) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return [];
+  return getAllBlogs().filter(b =>
+    b.city.toLowerCase().includes(normalized) ||
+    b.country.toLowerCase().includes(normalized) ||
+    b.title.toLowerCase().includes(normalized) ||
+    b.excerpt.toLowerCase().includes(normalized) ||
+    (b.tags && b.tags.some(t => t.includes(normalized)))
+  ).sort((a, b) => {
+    const scoreDiff = getSearchScore(a, normalized) - getSearchScore(b, normalized);
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.city.localeCompare(b.city);
+  });
+}
+
+function handleSearchInput() {
+  const query = document.getElementById('search-input').value.trim();
+  updateSearchClearButton(query);
+  renderSearchSuggestions(getSearchMatches(query), query);
+}
+
+function renderSearchSuggestions(matches, query) {
+  const box = document.getElementById('search-suggestions');
+  if (!box) return;
+  if (!query || !matches.length) {
+    box.classList.remove('active');
+    box.innerHTML = '';
+    return;
+  }
+  const uniqueByCity = [];
+  const seen = new Set();
+  matches.forEach(match => {
+    const key = `${match.city}|${match.country}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    uniqueByCity.push(match);
+  });
+  box.innerHTML = uniqueByCity.slice(0, 6).map(match => `
+    <button class="search-suggestions__item" type="button" data-track-event="button_click" data-track-param-location="search_suggestions" data-track-param-label="${escapeHtml(match.city)}" onclick="selectSearchSuggestion('${match.id}')">
+      <span class="search-suggestions__city">${match.city}</span>
+      <span class="search-suggestions__meta">${match.country} • ${getVibeIndicator(match)}</span>
+    </button>
+  `).join('');
+  box.classList.add('active');
+}
+
+function performSearch() {
+  const input = document.getElementById('search-input');
+  const query = input.value.trim();
+  updateSearchClearButton(query);
+  const matches = getSearchMatches(query);
+  renderSearchSuggestions(matches, query);
+
+  if (!query) return;
+  const exact = matches.find(match => match.city.toLowerCase() === query.toLowerCase());
+  if (exact) {
+    trackEventSafe('form_submit_success', {
+      form_name: 'destination_search',
+      location: 'hero',
+      query
+    });
+    selectSearchSuggestion(exact.id);
+  } else if (matches.length === 1) {
+    trackEventSafe('form_submit_success', {
+      form_name: 'destination_search',
+      location: 'hero',
+      query
+    });
+    selectSearchSuggestion(matches[0].id);
+  } else {
+    trackEventSafe('form_submit_error', {
+      form_name: 'destination_search',
+      location: 'hero',
+      query,
+      reason: 'no_single_match'
+    });
+  }
+}
+
+function selectSearchSuggestion(blogId) {
+  const match = getAllBlogs().find(blog => blog.id === blogId);
+  if (!match) return;
+  const input = document.getElementById('search-input');
+  if (input) {
+    input.value = match.city;
+    updateSearchClearButton(match.city);
+  }
+  const box = document.getElementById('search-suggestions');
+  if (box) {
+    box.classList.remove('active');
+    box.innerHTML = '';
+  }
+  navigateTo('blog', blogId);
+}
+
+function updateSearchClearButton(value = document.getElementById('search-input')?.value || '') {
+  const button = document.getElementById('search-clear');
+  if (!button) return;
+  button.classList.toggle('visible', Boolean(String(value).trim()));
+}
+
+function clearSearch(options = {}) {
+  const { shouldFocus = false } = options;
+  const input = document.getElementById('search-input');
+  if (input) input.value = '';
+  updateSearchClearButton('');
+  const box = document.getElementById('search-suggestions');
+  if (box) {
+    box.classList.remove('active');
+    box.innerHTML = '';
+  }
+  if (shouldFocus && input) input.focus();
+}
+
+function toggleMobileNav() {
+  const links = document.getElementById('nav-links');
+  const toggle = document.querySelector('.nav__toggle');
+  const isOpen = links.classList.toggle('open');
+  if (toggle) toggle.setAttribute('aria-expanded', String(isOpen));
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* ═══════════════════════════════════════════
+   ROUTING
+   ═══════════════════════════════════════════ */
+function navigateTo(page, param) {
+  const navLinks = document.getElementById('nav-links');
+  const navToggle = document.querySelector('.nav__toggle');
+  if (navLinks) navLinks.classList.remove('open');
+  if (navToggle) navToggle.setAttribute('aria-expanded', 'false');
+
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active', 'visible');
+  });
+
+  updateDocumentTitle(page, param);
+
+  if (page === 'home') {
+    window.location.hash = '';
+    clearSearch();
+    const homePage = document.getElementById('page-home');
+    homePage.classList.add('active');
+    requestAnimationFrame(() => homePage.classList.add('visible'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (page === 'recommendations') {
+    window.location.hash = param ? `recommendations/${param}` : 'recommendations';
+    if (param) activeRecommendationId = param;
+    renderRecommendationsAccess();
+    if (CURRENT_USER) {
+      renderRecommendationGrid();
+      renderRecommendationDetail();
+    }
+    const recommendationsPage = document.getElementById('page-recommendations');
+    recommendationsPage.classList.add('active');
+    requestAnimationFrame(() => {
+      recommendationsPage.classList.add('visible');
+      window.scrollTo({ top: 0 });
+    });
+  } else if (page === 'about') {
+    window.location.hash = 'about';
+    const aboutPage = document.getElementById('page-about');
+    aboutPage.classList.add('active');
+    requestAnimationFrame(() => {
+      aboutPage.classList.add('visible');
+      window.scrollTo({ top: 0 });
+    });
+  } else if (page === 'blog') {
+    window.location.hash = `blog/${param}`;
+    renderBlogDetail(param);
+    const blogPage = document.getElementById('page-blog');
+    blogPage.classList.add('active');
+    requestAnimationFrame(() => {
+      blogPage.classList.add('visible');
+      window.scrollTo({ top: 0 });
+    });
+  } else if (['privacy-policy', 'terms-and-conditions', 'cookie-consent'].includes(page)) {
+    window.location.hash = page;
+    const legalPage = document.getElementById(`page-${page}`);
+    if (!legalPage) return;
+    legalPage.classList.add('active');
+    requestAnimationFrame(() => {
+      legalPage.classList.add('visible');
+      window.scrollTo({ top: 0 });
+    });
+  }
+}
+
+function handleRoute() {
+  const hash = window.location.hash.slice(1);
+  if (hash.startsWith('blog/')) {
+    const id = hash.split('/')[1];
+    navigateTo('blog', id);
+  } else if (hash.startsWith('recommendations/')) {
+    const id = hash.split('/')[1];
+    navigateTo('recommendations', id);
+  } else if (hash === 'recommendations') {
+    navigateTo('recommendations');
+  } else if (hash === 'about') {
+    navigateTo('about');
+  } else if (['privacy-policy', 'terms-and-conditions', 'cookie-consent'].includes(hash)) {
+    navigateTo(hash);
+  } else {
+    navigateTo('home');
+  }
+}
+
+function smoothScroll(e, id) {
+  e.preventDefault();
+  const target = document.getElementById(id);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ═══════════════════════════════════════════
+   SCROLL EFFECTS
+   ═══════════════════════════════════════════ */
+function initRevealObserver() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+}
+
+// Nav scroll effect
+let navScrollFrame = 0;
+function syncNavScrollState() {
+  navScrollFrame = 0;
+  const nav = document.getElementById('nav');
+  if (!nav) return;
+  nav.classList.toggle('scrolled', window.scrollY > 60);
+}
+window.addEventListener('scroll', () => {
+  if (navScrollFrame) return;
+  navScrollFrame = requestAnimationFrame(syncNavScrollState);
+}, { passive: true });
+
+/* ═══════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadGeneratedBlogs();
+  await loadHomepageFilters();
+  await loadRecommendations();
+  subscribeToGeneratedBlogs();
+  initAnalyticsBindings();
+  getAnalyticsApi()?.startPageTracking?.({ getPageContext: getCurrentPageAnalyticsContext });
+  watchPublicAuth();
+  updateCookieBanner();
+  renderFilters();
+  renderAdvancedFilters();
+  renderBlogGrid();
+  renderRecommendationGrid();
+  renderRecommendationDetail();
+  renderRecommendationsAccess();
+  handleRoute();
+  initRevealObserver();
+  document.getElementById('search-input').addEventListener('input', handleSearchInput);
+  document.getElementById('search-input').addEventListener('focus', handleSearchInput);
+  document.getElementById('search-input').addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      performSearch();
+    }
+    if (event.key === 'Escape') {
+      clearSearch();
+    }
+  });
+  document.getElementById('filter-continent').addEventListener('change', event => setAdvancedFilter('continent', event.target.value));
+  document.getElementById('filter-country').addEventListener('change', event => setAdvancedFilter('country', event.target.value));
+  document.getElementById('filter-budget-range').addEventListener('change', event => setAdvancedFilter('budgetRange', event.target.value));
+  document.getElementById('filter-itinerary').addEventListener('change', event => setAdvancedFilter('itineraryLength', event.target.value));
+  document.getElementById('filter-travel-style').addEventListener('change', event => setAdvancedFilter('travelStyle', event.target.value));
+  document.getElementById('filter-smart-score').addEventListener('change', event => setAdvancedFilter('smartScore', event.target.value));
+  document.getElementById('filter-smart-score-min').addEventListener('change', event => setAdvancedFilter('smartScoreMin', event.target.value));
+  document.getElementById('filter-final-score').addEventListener('change', event => setAdvancedFilter('finalScore', event.target.value));
+
+  // Hero zoom effect
+  setTimeout(() => {
+    const hero = document.getElementById('hero');
+    if (hero) hero.classList.add('loaded');
+  }, 100);
+
+  document.addEventListener('click', event => {
+    const wrap = document.querySelector('.search-wrap');
+    const box = document.getElementById('search-suggestions');
+    if (!wrap || !box) return;
+    if (!wrap.contains(event.target)) {
+      box.classList.remove('active');
+    }
+  });
+  updateSearchClearButton();
+});
+
+window.addEventListener('hashchange', handleRoute);
+</script>
+</body>
+</html>
