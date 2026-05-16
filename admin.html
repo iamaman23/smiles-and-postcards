@@ -1054,14 +1054,44 @@ function isFirebaseConfigured() {
   return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.includes('PASTE_') && window.firebase;
 }
 
-function initFirebase() {
+function isStorageAvailable() {
+  try {
+    const key = '__smilesandpostcards_admin_storage_probe__';
+    localStorage.setItem(key, key);
+    localStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function isFirebaseAuthEnvironmentSupported() {
+  const protocol = window.location?.protocol || '';
+  return ['http:', 'https:', 'chrome-extension:'].includes(protocol) && isStorageAvailable();
+}
+
+function getFirebaseAuthEnvironmentMessage() {
+  if (isFirebaseAuthEnvironmentSupported()) return '';
+  const protocol = window.location?.protocol || 'unknown';
+  if (!['http:', 'https:', 'chrome-extension:'].includes(protocol)) {
+    return `Firebase admin sign-in only works over http or https. This page is currently running from ${protocol}. Open it via localhost or a deployed URL.`;
+  }
+  return 'Firebase admin sign-in requires browser storage to be enabled. Please enable local storage/cookies for this site and try again.';
+}
+
+function initFirebase({ requireAuth = false } = {}) {
   if (!isFirebaseConfigured()) {
     setStatus('Paste your Firebase config into this file before using deployed admin publishing.', 'err');
     return false;
   }
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
   FIRESTORE_DB = firebase.firestore();
-  FIREBASE_AUTH = firebase.auth();
+  if (requireAuth && !isFirebaseAuthEnvironmentSupported()) {
+    setStatus(getFirebaseAuthEnvironmentMessage(), 'err');
+    FIREBASE_AUTH = null;
+    return false;
+  }
+  FIREBASE_AUTH = isFirebaseAuthEnvironmentSupported() ? firebase.auth() : null;
   return true;
 }
 
@@ -2199,6 +2229,9 @@ function formatFirebaseAuthError(error) {
     'auth/wrong-password': 'The password is incorrect for that Firebase user.',
     'auth/user-not-found': 'That email does not exist in Firebase Authentication yet.',
     'auth/invalid-email': 'The email address format is invalid.',
+    'auth/operation-not-allowed': 'Email/password sign-in is not enabled in Firebase Authentication. Enable the Email/Password provider first.',
+    'auth/configuration-not-found': 'Email/password sign-in is not configured in Firebase Authentication yet. Enable the Email/Password provider first.',
+    'auth/operation-not-supported-in-this-environment': getFirebaseAuthEnvironmentMessage() || 'Firebase admin sign-in is not supported in this environment.',
     'auth/too-many-requests': 'Firebase temporarily rate-limited sign-in attempts. Wait a moment and try again.',
     'auth/network-request-failed': 'The browser could not reach Firebase. Check your internet connection or hosting domain.',
     'auth/unauthorized-domain': 'This site domain is not authorized in Firebase Authentication. Add it under Authentication -> Settings -> Authorized domains.'
@@ -2704,7 +2737,7 @@ async function copyJson() {
 }
 
 async function signInAdmin() {
-  if (!initFirebase()) return;
+  if (!initFirebase({ requireAuth: true }) || !FIREBASE_AUTH) return;
   const email = document.getElementById('adminEmail').value.trim();
   const password = document.getElementById('adminPassword').value;
   if (!email || !password) {
@@ -2743,10 +2776,15 @@ async function signOutAdmin() {
 
 function watchAdminAuth() {
   if (!initFirebase()) return;
+  const authUser = document.getElementById('authUser');
+  if (!FIREBASE_AUTH) {
+    if (authUser) authUser.textContent = getFirebaseAuthEnvironmentMessage() || 'Firebase admin sign-in is unavailable.';
+    return;
+  }
   FIREBASE_AUTH.onAuthStateChanged(user => {
     currentAdmin = user;
     document.body.classList.toggle('is-admin', Boolean(user));
-    document.getElementById('authUser').textContent = user ? `Signed in as ${user.email}` : 'Not signed in.';
+    if (authUser) authUser.textContent = user ? `Signed in as ${user.email}` : 'Not signed in.';
     if (user) {
       loadSaved();
       loadRecommendationsAdmin();
@@ -2785,6 +2823,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('cardImageUrl').addEventListener('input', () => { syncDraftImageOverrides(); });
   document.getElementById('heroImageUrl').addEventListener('input', () => { syncDraftImageOverrides(); });
+  document.getElementById('adminEmail').addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    signInAdmin();
+  });
+  document.getElementById('adminPassword').addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    signInAdmin();
+  });
 });
 </script>
 </body>

@@ -39,6 +39,7 @@ Firebase is still required even when hosting on Vercel.
 1. In Firebase Authentication, add your Vercel domain and any custom domain under `Authorized domains`.
 2. Keep the Firebase config in `index.html`, `admin.html`, and `analytics.js`.
 3. Deploy Firestore rules from this repo whenever they change.
+4. Open `admin.html` over `http://localhost` or a deployed `https://` URL when testing admin sign-in. Firebase auth will not work reliably from `file://`.
 
 To deploy rules only:
 
