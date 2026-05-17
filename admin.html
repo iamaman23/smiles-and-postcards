@@ -489,7 +489,7 @@ body:not(.is-admin) .admin-lock {
 
     <section class="panel">
       <h2>Admin Login</h2>
-      <p class="hint">Use the Firebase email/password admin account you create for yourself. Firestore rules decide who can publish.</p>
+      <p class="hint">Use a Firebase email/password account listed in `firestore.rules`. Adding a user to a Firestore `users` collection alone does not grant publish access.</p>
       <div class="auth-box">
         <div class="auth-row">
           <div class="field">
@@ -520,7 +520,10 @@ body:not(.is-admin) .admin-lock {
         </div>
         <div class="field">
           <label for="model">Model</label>
-          <input id="model" placeholder="gemini-1.5-flash" value="gemini-1.5-flash">
+          <select id="model">
+            <option value="gemini-2.5-flash" selected>gemini-2.5-flash</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+          </select>
         </div>
         <div class="field field--full">
           <label for="endpoint">Generation API endpoint</label>
@@ -554,32 +557,15 @@ body:not(.is-admin) .admin-lock {
       <div class="saved-list" id="homeTagSettings"></div>
 
       <div style="height:1.5rem;"></div>
-      <div class="checklist-step">
-        <span class="checklist-step__eyebrow">New Step</span>
-        <h2>Legal and Compliance</h2>
-        <p class="hint">Keep these core website requirements in place before publishing or promoting the app broadly.</p>
-        <div class="checklist-step__list">
-          <label class="checklist-step__item">
-            <input type="checkbox" data-track-event="button_click" data-track-param-location="legal_and_compliance" data-track-param-label="privacy_policy_page">
-            <span>
-              <strong>Privacy Policy Page</strong>
-              <span>Publish a clear page that explains what user data is collected, how Firebase and analytics data are used, and how visitors can contact you.</span>
-            </span>
-          </label>
-          <label class="checklist-step__item">
-            <input type="checkbox" data-track-event="button_click" data-track-param-location="legal_and_compliance" data-track-param-label="terms_of_service_page">
-            <span>
-              <strong>Terms and Conditions (Terms of Service Page)</strong>
-              <span>Define acceptable use, intellectual property, disclaimers, and any limits of liability for the travel content and recommendations.</span>
-            </span>
-          </label>
-          <label class="checklist-step__item">
-            <input type="checkbox" data-track-event="button_click" data-track-param-location="legal_and_compliance" data-track-param-label="cookie_consent">
-            <span>
-              <strong>Cookie Consent</strong>
-              <span>Add a consent flow that explains analytics cookies and stores a visitor choice before non-essential tracking is enabled.</span>
-            </span>
-          </label>
+      <h2>Prompts</h2>
+      <div class="form-grid">
+        <div class="field field--full">
+          <label for="systemPrompt">System prompt</label>
+          <textarea id="systemPrompt"></textarea>
+        </div>
+        <div class="field field--full">
+          <label for="userPrompt">User prompt</label>
+          <textarea id="userPrompt"></textarea>
         </div>
       </div>
 
@@ -607,19 +593,6 @@ body:not(.is-admin) .admin-lock {
         </div>
         <div class="status" id="recommendationDebugStatus"></div>
         <div id="recommendationDebugOutput"></div>
-      </div>
-
-      <div style="height:1.5rem;"></div>
-      <h2>Prompts</h2>
-      <div class="form-grid">
-        <div class="field field--full">
-          <label for="systemPrompt">System prompt</label>
-          <textarea id="systemPrompt"></textarea>
-        </div>
-        <div class="field field--full">
-          <label for="userPrompt">User prompt</label>
-          <textarea id="userPrompt"></textarea>
-        </div>
       </div>
       <div class="actions-row">
         <button class="btn btn--primary" id="generateBtn" type="button" data-track-event="cta_click" data-track-param-location="generation_setup" data-track-param-label="generate_story" onclick="generateStory()">Generate from API</button>
@@ -1249,9 +1222,7 @@ function defaultSystemPrompt() {
 
 Use real-sounding travel advice, practical budgets, best months, tags, food spots, hidden gems, and a day-by-day itinerary. The tone should match a subtle editorial travel blog.
 
-For image intent, think in terms of the city itself, skyline, landmark, monument, old town, bridge, cathedral, or street scene.
-
-Use only real direct Unsplash image URLs from images.unsplash.com. If you are not sure the URL is real, return an empty string instead of inventing one.`;
+Image fields are managed manually in the admin panel, so return empty strings for image, heroImage, and every food image.`;
 }
 
 function defaultUserPrompt() {
@@ -1314,9 +1285,8 @@ HIGHLIGHTS / WARNINGS:
 
 IMAGES:
 - budgetBreakdown should include Accommodation, Food & Drink, Transport, Activities, Total / Day
-- image and heroImage should reflect the city itself, preferably skyline, landmark, monument, bridge, cathedral, or old town scene
-- image and heroImage must be real direct images.unsplash.com URLs when provided
-- if you are not fully sure a real direct Unsplash URL exists, return an empty string instead of inventing one
+- image must always be an empty string
+- heroImage must always be an empty string
 - food images must always be empty strings
 
 FINAL RULE:
@@ -2243,7 +2213,7 @@ function formatFirestoreActionError(error, fallbackMessage) {
   const code = error && error.code;
   if (code === 'permission-denied') {
     const email = currentAdmin?.email || 'your current account';
-    return `Firestore rejected this action for ${email}. If this is the correct admin email, deploy the current firestore.rules to Firebase because local rule edits do not change the live project until they are deployed.`;
+    return `Firestore rejected this action for ${email}. The live project only grants writes to emails allowed in deployed Firebase rules, so add the email there and deploy firestore.rules. A Firestore users document by itself does not grant write access.`;
   }
   if (code === 'unauthenticated') {
     return 'Firebase does not see an authenticated admin session. Sign in again and retry.';
@@ -2267,6 +2237,28 @@ async function getRecommendationSourceBlogs() {
   const postsSnapshot = await FIRESTORE_DB.collection('posts').get();
   const legacyBlogs = sortPostsByCreatedAt(postsSnapshot.docs.map(doc => normalizeFirestoreBlog({ id: doc.id, ...doc.data() })));
   return mergeBlogCollections(structuredBlogs, legacyBlogs);
+}
+
+async function getSavedBlogsFromFirestore() {
+  const [citiesSnapshot, itinerariesSnapshot, placesSnapshot, postsSnapshot] = await Promise.all([
+    FIRESTORE_DB.collection('cities').get(),
+    FIRESTORE_DB.collection('itineraries').get(),
+    FIRESTORE_DB.collection('places').get(),
+    FIRESTORE_DB.collection('posts').get()
+  ]);
+  const structuredBlogs = sortPostsByCreatedAt(buildStructuredSavedItems(citiesSnapshot, itinerariesSnapshot, placesSnapshot));
+  const legacyBlogs = sortPostsByCreatedAt(postsSnapshot.docs.map(doc => normalizeFirestoreBlog({ id: doc.id, ...doc.data() })));
+  return mergeBlogCollections(structuredBlogs, legacyBlogs);
+}
+
+async function resolveSavedDocTarget(id) {
+  const [cityDoc, postDoc] = await Promise.all([
+    FIRESTORE_DB.collection('cities').doc(id).get(),
+    FIRESTORE_DB.collection('posts').doc(id).get()
+  ]);
+  if (cityDoc.exists) return { collection: 'cities', doc: cityDoc };
+  if (postDoc.exists) return { collection: 'posts', doc: postDoc };
+  throw new Error('This saved card no longer exists in Firestore. Refresh the list and try again.');
 }
 
 async function regenerateRecommendationsFromCurrentData() {
@@ -2293,7 +2285,7 @@ async function generateStory() {
   const city = document.getElementById('city').value.trim();
   const endpoint = document.getElementById('endpoint').value.trim();
   const apiKey = document.getElementById('apiKey').value.trim();
-  const model = document.getElementById('model').value.trim() || 'gemini-1.5-flash';
+  const model = document.getElementById('model').value.trim() || 'gemini-2.5-flash';
   const systemPrompt = document.getElementById('systemPrompt').value.trim();
   const userPrompt = document.getElementById('userPrompt').value.trim();
 
@@ -2389,9 +2381,8 @@ async function saveStory() {
 
   try {
     const { cityId, itineraryId, cityDoc, itineraryDoc, placeDocs } = buildFirestoreDocuments(generatedDraft);
-    const existingSnapshot = await FIRESTORE_DB.collection('cities').get();
-    const existingCities = existingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    if (generatedDraft.featured && getFeaturedCount(existingCities, cityId) >= 2) {
+    const existingSaved = await getSavedBlogsFromFirestore();
+    if (generatedDraft.featured && getFeaturedCount(existingSaved, cityId) >= 2) {
       setStatus('Only 2 featured cards are allowed. Unfeature one saved card first.', 'err');
       return;
     }
@@ -2445,7 +2436,7 @@ async function saveStory() {
     });
     await loadSaved();
   } catch (error) {
-    setStatus(error.message || 'Unable to save to Firebase.', 'err');
+    setStatus(formatFirestoreActionError(error, 'Unable to save to Firebase.'), 'err');
     trackEventSafe('form_submit_error', {
       form_name: 'publish_story',
       location: 'generation_setup',
@@ -2459,15 +2450,7 @@ async function loadSaved() {
   let saved = readSavedLocal();
   try {
     if (!FIRESTORE_DB && !initFirebase()) throw new Error('Firebase is not configured yet.');
-    const [citiesSnapshot, itinerariesSnapshot, placesSnapshot] = await Promise.all([
-      FIRESTORE_DB.collection('cities').get(),
-      FIRESTORE_DB.collection('itineraries').get(),
-      FIRESTORE_DB.collection('places').get()
-    ]);
-    const structuredBlogs = sortPostsByCreatedAt(buildStructuredSavedItems(citiesSnapshot, itinerariesSnapshot, placesSnapshot));
-    const snapshot = await FIRESTORE_DB.collection('posts').get();
-    const legacyBlogs = sortPostsByCreatedAt(snapshot.docs.map(doc => normalizeFirestoreBlog({ id: doc.id, ...doc.data() })));
-    saved = mergeBlogCollections(structuredBlogs, legacyBlogs);
+    saved = await getSavedBlogsFromFirestore();
     localStorage.setItem(GENERATED_BLOGS_KEY, JSON.stringify(saved));
   } catch (error) {
     console.info('Using local saved posts fallback until Firebase is configured.', error);
@@ -2605,7 +2588,8 @@ async function toggleHomeVisibility(id, nextVisible) {
   if (!requireAdmin()) return;
 
   try {
-    await FIRESTORE_DB.collection('cities').doc(id).update({
+    const target = await resolveSavedDocTarget(id);
+    await FIRESTORE_DB.collection(target.collection).doc(id).update({
       showOnHome: nextVisible,
       pinned: nextVisible,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -2613,7 +2597,7 @@ async function toggleHomeVisibility(id, nextVisible) {
     await loadSaved();
     setStatus(nextVisible ? 'Card will be shown on the home page.' : 'Card hidden from the home page.', 'ok');
   } catch (error) {
-    setStatus(error.message || 'Unable to update home page visibility.', 'err');
+    setStatus(formatFirestoreActionError(error, 'Unable to update home page visibility.'), 'err');
   }
 }
 
@@ -2658,20 +2642,22 @@ async function toggleFeatured(id, nextFeatured) {
   if (!requireAdmin()) return;
 
   try {
-    const existingSnapshot = await FIRESTORE_DB.collection('cities').get();
-    const existingCities = existingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    if (nextFeatured && getFeaturedCount(existingCities, id) >= 2) {
+    const [savedBlogs, target] = await Promise.all([
+      getSavedBlogsFromFirestore(),
+      resolveSavedDocTarget(id)
+    ]);
+    if (nextFeatured && getFeaturedCount(savedBlogs, id) >= 2) {
       setStatus('Only 2 featured cards are allowed. Unfeature one saved card first.', 'err');
       return;
     }
-    await FIRESTORE_DB.collection('cities').doc(id).update({
+    await FIRESTORE_DB.collection(target.collection).doc(id).update({
       featured: nextFeatured,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await loadSaved();
     setStatus(nextFeatured ? 'Card marked as featured.' : 'Card removed from featured.', 'ok');
   } catch (error) {
-    setStatus(error.message || 'Unable to update featured state.', 'err');
+    setStatus(formatFirestoreActionError(error, 'Unable to update featured state.'), 'err');
   }
 }
 
@@ -2679,7 +2665,8 @@ async function removeSaved(id) {
   if (!requireAdmin()) return;
 
   try {
-    await FIRESTORE_DB.collection('cities').doc(id).delete();
+    const target = await resolveSavedDocTarget(id);
+    await FIRESTORE_DB.collection(target.collection).doc(id).delete();
     const [itinerarySnapshot, placesSnapshot] = await Promise.all([
       FIRESTORE_DB.collection('itineraries').where('cityId', '==', id).get(),
       FIRESTORE_DB.collection('places').where('cityId', '==', id).get()
@@ -2695,7 +2682,7 @@ async function removeSaved(id) {
     await loadSaved();
     setStatus('Generated post removed from Firebase.', 'ok');
   } catch (error) {
-    setStatus(error.message || 'Unable to remove generated post.', 'err');
+    setStatus(formatFirestoreActionError(error, 'Unable to remove generated post.'), 'err');
   }
 }
 
@@ -2704,15 +2691,17 @@ async function clearSaved() {
   if (!requireAdmin()) return;
 
   try {
-    const [citiesSnapshot, itinerariesSnapshot, placesSnapshot] = await Promise.all([
+    const [citiesSnapshot, itinerariesSnapshot, placesSnapshot, postsSnapshot] = await Promise.all([
       FIRESTORE_DB.collection('cities').get(),
       FIRESTORE_DB.collection('itineraries').get(),
-      FIRESTORE_DB.collection('places').get()
+      FIRESTORE_DB.collection('places').get(),
+      FIRESTORE_DB.collection('posts').get()
     ]);
     const batch = FIRESTORE_DB.batch();
     citiesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     itinerariesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     placesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    postsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
     localStorage.removeItem(GENERATED_BLOGS_KEY);
     generatedDraft = null;
