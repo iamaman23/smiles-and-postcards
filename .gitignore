@@ -1,6 +1,7 @@
 .firebase/
 firebase-debug.log
 node_modules/
+.next/
 .git/
 .agents/
 .codex/
@@ -13,3 +14,4 @@ node_modules/
 *.p12
 *.p8
 service-account*.json
+npm-debug.log*

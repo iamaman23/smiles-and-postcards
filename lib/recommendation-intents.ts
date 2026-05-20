@@ -1,4 +1,11 @@
-window.SMILESANDPOSTCARDS_RECOMMENDATION_INTENTS = [
+export type RecommendationIntent = {
+  id: string;
+  title: string;
+  filters?: Record<string, unknown>;
+  ranking?: Record<string, unknown>;
+};
+
+export const RECOMMENDATION_INTENTS: RecommendationIntent[] = [
   {
     id: "budget_europe",
     title: "Best Budget Trips in Europe",
@@ -256,139 +263,6 @@ window.SMILESANDPOSTCARDS_RECOMMENDATION_INTENTS = [
       limit: 10,
       scoreWeights: { food: 4, affordability: 3, finalScore: 2 },
       boostTravelStyles: ["foodie", "budget"]
-    }
-  },
-  {
-    id: "rainy_day_destinations",
-    title: "Best Cities for Cozy Rainy Trips",
-    filters: {
-      experience: { pace: "relaxed" }
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { culture: 2, food: 1, finalScore: 2 },
-      boostTags: ["history", "architecture"],
-      preferPace: "relaxed"
-    }
-  },
-  {
-    id: "sunny_winter_escapes",
-    title: "Warm Winter Escapes",
-    filters: {
-      tags: ["winter_sun"]
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { finalScore: 3, food: 1, nature: 1 },
-      boostTags: ["winter_sun", "coastal"],
-      preferSeason: "winter"
-    }
-  },
-  {
-    id: "spring_city_breaks",
-    title: "Best Cities to Visit in Spring",
-    filters: {
-      bestSeason: "spring"
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { finalScore: 3, walkability: 1, culture: 1 },
-      boostTags: ["scenic", "architecture"],
-      preferSeason: "spring"
-    }
-  },
-  {
-    id: "summer_party_destinations",
-    title: "Summer Party Destinations",
-    filters: {
-      travelStyles: ["party"],
-      bestSeason: "summer"
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { nightlife: 5, finalScore: 2 },
-      boostTravelStyles: ["party"],
-      preferSeason: "summer",
-      preferPace: "fast"
-    }
-  },
-  {
-    id: "fall_foliage_destinations",
-    title: "Autumn Destinations with Stunning Colors",
-    filters: {
-      tags: ["autumn", "nature"]
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { nature: 4, finalScore: 2, culture: 1 },
-      boostTags: ["autumn", "nature", "photography"],
-      preferSeason: "autumn"
-    }
-  },
-  {
-    id: "winter_wonderlands",
-    title: "Winter Wonderland Cities",
-    filters: {
-      tags: ["winter", "christmas"]
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { finalScore: 3, culture: 1, walkability: 1 },
-      boostTags: ["winter", "christmas", "photography"],
-      preferSeason: "winter"
-    }
-  },
-  {
-    id: "easy_to_navigate",
-    title: "Easy Cities for Stress-Free Travel",
-    filters: {
-      scores: {
-        connectivity: 9,
-        walkability: 8
-      }
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { connectivity: 4, walkability: 3, safety: 1, finalScore: 2 },
-      boostTags: ["first_time"]
-    }
-  },
-  {
-    id: "slow_travel_destinations",
-    title: "Slow Travel Destinations",
-    filters: {
-      experience: { pace: "relaxed" }
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { finalScore: 3, culture: 1, nature: 1 },
-      boostTags: ["scenic", "coastal", "offbeat"],
-      preferPace: "relaxed"
-    }
-  },
-  {
-    id: "high_energy_city_trips",
-    title: "Fast-Paced High Energy Cities",
-    filters: {
-      experience: { pace: "fast" }
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { nightlife: 2, connectivity: 2, finalScore: 3 },
-      boostTravelStyles: ["party", "solo"],
-      preferPace: "fast"
-    }
-  },
-  {
-    id: "instagrammable_places",
-    title: "Most Instagrammable Destinations",
-    filters: {
-      tags: ["photography", "architecture", "scenic"]
-    },
-    ranking: {
-      limit: 10,
-      scoreWeights: { finalScore: 3, culture: 1, nature: 1 },
-      boostTags: ["photography", "architecture", "scenic"]
     }
   }
 ];

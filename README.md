@@ -1,56 +1,37 @@
 # Smiles and Postcards
 
-Smiles and Postcards is a static travel storytelling site with a public reader experience and a protected admin panel for generating and publishing destination content.
+Smiles and Postcards is a Next.js 15 App Router site for destination stories and recommendation-driven travel discovery.
 
-The frontend is ready to be hosted on Vercel, while Firebase remains the backend for:
+## Stack
 
-- Firestore
-- Authentication
-- Analytics
+- Next.js 15
+- React 19
+- TypeScript
+- Firebase Auth and Firestore APIs
+- Vercel-ready deployment
 
 ## Project Structure
 
-- `index.html`: public site entrypoint
-- `admin.html`: protected admin panel
-- `analytics.js`: Firebase analytics bootstrap
-- `smilesandpostcards-recommendation-intents.js`: recommendation prompt dataset
-- `smilesandpostcards-site.js`: extracted public-site logic mirror
-- `smilesandpostcards-admin.js`: extracted admin logic mirror
-- `vercel.json`: Vercel routing and headers
-- `firebase.json`: optional Firebase Hosting configuration
-- `firestore.rules`: Firestore access control
+- `app/`: routes, metadata, sitemap, and global styles
+- `components/site/`: page shells and reusable UI
+- `lib/`: site config, Firestore data loading, and recommendation logic
+- `public/analytics.js`: client analytics bootstrap
 
-## Deploy To Vercel
+## Local Development
 
-1. Push this repo to GitHub.
-2. Import the repo into Vercel.
-3. Use the default static deployment settings.
-4. Deploy.
+1. Install dependencies with `npm install`
+2. Run `npm run dev`
+3. Open `http://localhost:3000`
 
-The site is configured so:
+## Production
 
-- `/` serves `index.html`
-- `/admin` serves `admin.html`
+- Build with `npm run build`
+- Start locally with `npm run start`
+- Deploy directly to Vercel as a standard Next.js project
 
-## Firebase Checklist For Vercel
+## Environment Notes
 
-Firebase is still required even when hosting on Vercel.
+The site can derive its canonical base URL from Vercel automatically. If needed, you can also set one of:
 
-1. In Firebase Authentication, add your Vercel domain and any custom domain under `Authorized domains`.
-2. Keep the Firebase config in `index.html`, `admin.html`, and `analytics.js`.
-3. Deploy Firestore rules from this repo whenever they change.
-4. Open `admin.html` over `http://localhost` or a deployed `https://` URL when testing admin sign-in. Firebase auth will not work reliably from `file://`.
-
-To deploy rules only:
-
-```bash
-firebase deploy --only firestore:rules
-```
-
-## Firebase Setup
-
-Follow the full setup guide in `SMILESANDPOSTCARDS_FIREBASE_DEPLOYMENT.md`.
-
-## Content Schema
-
-The generated destination JSON contract is documented in `SMILESANDPOSTCARDS_POST_SCHEMA.md`.
+- `NEXT_PUBLIC_SITE_URL`
+- `SITE_URL`
