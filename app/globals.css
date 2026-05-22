@@ -208,7 +208,7 @@ input:focus-visible,
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  overflow: visible;
+  overflow: hidden;
   padding: 8.5rem 3rem 4rem;
 }
 .hero__bg {
@@ -237,6 +237,7 @@ input:focus-visible,
   z-index: 12;
   text-align: left;
   max-width: 760px;
+  min-width: 0;
 }
 .hero__tag {
   font-family: var(--font-accent);
@@ -280,6 +281,7 @@ input:focus-visible,
   flex-wrap: wrap;
   gap: 0.65rem;
   margin-top: 1.3rem;
+  max-width: 100%;
   opacity: 0;
   transform: translateY(20px);
   animation: fadeUp 0.8s 1.05s var(--ease-out-expo) forwards;
@@ -311,6 +313,7 @@ input:focus-visible,
 .search-wrap {
   position: relative;
   z-index: 18;
+  max-width: 100%;
   opacity: 0;
   transform: translateY(20px);
   animation: fadeUp 0.8s 0.9s var(--ease-out-expo) forwards;
@@ -2423,6 +2426,11 @@ input:focus-visible,
     inset: auto 1.5rem 1.7rem;
   }
   .hero__content { max-width: 100%; }
+  .hero__title,
+  .hero__subtitle,
+  .hero__quicklist {
+    max-width: 100%;
+  }
   .hero__quicklist { margin-right: 2.5rem; }
   .search {
     max-width: 100%;

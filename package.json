@@ -8,6 +8,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "agentation": "^3.0.2",
     "next": "15.5.16",
     "react": "19.2.1",
     "react-dom": "19.2.1"

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { buildCityImageRoute, isGenericCityFallbackImage } from "./city-image-routes";
 import { RECOMMENDATION_INTENTS, type RecommendationIntent } from "./recommendation-intents";
 import { DEFAULT_REVALIDATE_SECONDS, FIREBASE_CONFIG } from "./site-config";
 
@@ -286,7 +287,8 @@ async function fetchCollectionPage(collection: string, pageToken?: string) {
   try {
     const response = await fetch(url, {
       next: {
-        revalidate: DEFAULT_REVALIDATE_SECONDS
+        revalidate: DEFAULT_REVALIDATE_SECONDS,
+        tags: [`firestore:${collection}`, "firestore:content"]
       }
     });
 
@@ -509,6 +511,13 @@ function normalizeLoadedBlog(blog: Record<string, any>): TravelBlog {
     familyFriendly: clampScore(blog?.scores?.familyFriendly, 7)
   };
 
+  const fallbackCardImage = buildCityImageRoute(blog.city, blog.country, "card");
+  const fallbackHeroImage = buildCityImageRoute(blog.city, blog.country, "hero");
+  const image = String(blog.image || "");
+  const heroImage = String(blog.heroImage || blog.image || "");
+  const useFallbackCardImage = !image || isGenericCityFallbackImage(image) || (!image.startsWith("http") && !image.startsWith("/"));
+  const useFallbackHeroImage = !heroImage || isGenericCityFallbackImage(heroImage) || (!heroImage.startsWith("http") && !heroImage.startsWith("/"));
+
   const normalized: TravelBlog = {
     ...blog,
     id: String(blog.id || blog.cityId || ""),
@@ -517,8 +526,8 @@ function normalizeLoadedBlog(blog: Record<string, any>): TravelBlog {
     country: String(blog.country || ""),
     title: String(blog.title || ""),
     excerpt: String(blog.excerpt || ""),
-    image: String(blog.image || ""),
-    heroImage: String(blog.heroImage || blog.image || ""),
+    image: useFallbackCardImage ? fallbackCardImage : image,
+    heroImage: useFallbackHeroImage ? fallbackHeroImage : heroImage,
     days: Number(blog.days || 3),
     tags: normalizeTags(blog.country, blog.tags, blog.city, blog?.meta?.continent),
     travelStyles: ensureArray<string>(blog.travelStyles).map(slugify),

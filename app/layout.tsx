@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Script from "next/script";
+import { AgentationOverlay } from "../components/site/AgentationOverlay";
 import { CookieBanner } from "../components/site/CookieBanner";
 import { SiteChromeEffects } from "../components/site/SiteChromeEffects";
 import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME } from "../lib/site-config";
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <SiteChromeEffects />
+        <AgentationOverlay />
         {children}
         <CookieBanner />
         <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" strategy="afterInteractive" />
