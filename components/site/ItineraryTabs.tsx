@@ -8,7 +8,13 @@ function getItineraryDayNumber(day: BlogDay, index: number) {
   return match ? match[0] : String(index + 1);
 }
 
-export function ItineraryTabs({ itinerary, storyId }: { itinerary: BlogDay[]; storyId: string }) {
+export function ItineraryTabs({
+  itinerary,
+  storyId
+}: {
+  itinerary: BlogDay[];
+  storyId: string;
+}) {
   const [activeIndex, setActiveIndex] = useState(0);
 
   return (
@@ -54,9 +60,9 @@ export function ItineraryTabs({ itinerary, storyId }: { itinerary: BlogDay[]; st
             </div>
             <p className="itinerary-tabs__text">{day.text}</p>
             {day.spots.length ? (
-              <div className="itinerary-tabs__spots">
+              <div className="itinerary-tabs__location" aria-label="Destinations for this day">
                 {day.spots.map((spot) => (
-                  <span className="spot-tag" key={`${day.day}-${spot}`}>{spot}</span>
+                  <span className="itinerary-tabs__location-pill" key={`${day.day}-location-${spot}`}>{spot}</span>
                 ))}
               </div>
             ) : null}

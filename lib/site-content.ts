@@ -1,21 +1,21 @@
 import { cache } from "react";
 import { buildCityImageRoute, isGenericCityFallbackImage } from "./city-image-routes";
 import { RECOMMENDATION_INTENTS, type RecommendationIntent } from "./recommendation-intents";
-import { DEFAULT_REVALIDATE_SECONDS, FIREBASE_CONFIG } from "./site-config";
+import { selectRows } from "./supabase-rest";
 
-type FirestorePrimitive =
+export type ContentPrimitive =
   | string
   | number
   | boolean
   | null
-  | FirestorePrimitive[]
-  | { [key: string]: FirestorePrimitive };
+  | ContentPrimitive[]
+  | { [key: string]: ContentPrimitive };
 
-type FirestoreDocument = {
+export type ContentDocument = {
   id: string;
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: FirestorePrimitive | undefined;
+  [key: string]: ContentPrimitive | undefined;
 };
 
 export type PlaceEntity = {
@@ -76,7 +76,7 @@ export type TravelBlog = {
   meta?: {
     continent?: string;
     currency?: string;
-    [key: string]: FirestorePrimitive | undefined;
+    [key: string]: ContentPrimitive | undefined;
   };
   finalScore?: number;
   createdAt?: string;
@@ -221,7 +221,7 @@ const MONTH_TO_SEASON: Record<string, string> = {
   dec: "winter"
 };
 
-function slugify(value: unknown) {
+export function slugify(value: unknown) {
   return String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -240,93 +240,36 @@ function slugifyList(values: unknown) {
   return ensureArray<string>(values).map(slugify).filter(Boolean);
 }
 
-function parseFirestoreValue(value: any): FirestorePrimitive {
-  if (!value || typeof value !== "object") return null;
-  if ("stringValue" in value) return value.stringValue;
-  if ("integerValue" in value) return Number(value.integerValue);
-  if ("doubleValue" in value) return Number(value.doubleValue);
-  if ("booleanValue" in value) return Boolean(value.booleanValue);
-  if ("timestampValue" in value) return value.timestampValue;
-  if ("nullValue" in value) return null;
-  if ("geoPointValue" in value) {
-    return {
-      lat: Number(value.geoPointValue.latitude || 0),
-      lng: Number(value.geoPointValue.longitude || 0)
-    };
-  }
-  if ("mapValue" in value) {
-    const fields = value.mapValue?.fields || {};
-    return Object.fromEntries(
-      Object.entries(fields).map(([key, nested]) => [key, parseFirestoreValue(nested)])
-    );
-  }
-  if ("arrayValue" in value) {
-    return ensureArray(value.arrayValue?.values).map(parseFirestoreValue);
-  }
-  return null;
+function toCamelCaseKey(value: string) {
+  return value.replace(/_([a-z])/g, (_, char) => char.toUpperCase());
 }
 
-function parseFirestoreDocument(document: any): FirestoreDocument {
-  const rawFields = document?.fields || {};
-  const fields = Object.fromEntries(
-    Object.entries(rawFields).map(([key, value]) => [key, parseFirestoreValue(value)])
-  );
+function normalizeSupabaseDocument(row: Record<string, any>): ContentDocument {
+  const entries = Object.entries(row || {}).map(([key, value]) => [toCamelCaseKey(key), value]);
+  const fields = Object.fromEntries(entries);
   return {
-    id: String(document?.name || "").split("/").pop() || "",
-    createdAt: document?.createTime,
-    updatedAt: document?.updateTime,
-    ...fields
+    ...fields,
+    id: String(row.id || row.city_id || row.key || ""),
+    createdAt: row.created_at ? String(row.created_at) : undefined,
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined
   };
 }
 
-async function fetchCollectionPage(collection: string, pageToken?: string) {
-  const params = new URLSearchParams({ key: FIREBASE_CONFIG.apiKey });
-  if (pageToken) params.set("pageToken", pageToken);
-  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}?${params.toString()}`;
+async function fetchCollection(collection: string) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return [] as ContentDocument[];
+  }
 
   try {
-    const response = await fetch(url, {
-      next: {
-        revalidate: DEFAULT_REVALIDATE_SECONDS,
-        tags: [`firestore:${collection}`, "firestore:content"]
-      }
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return {
-          documents: [] as FirestoreDocument[],
-          nextPageToken: ""
-        };
-      }
-      throw new Error(`Firestore request failed for ${collection}: ${response.status}`);
-    }
-
-    const payload = await response.json();
-    return {
-      documents: ensureArray(payload.documents).map(parseFirestoreDocument),
-      nextPageToken: String(payload.nextPageToken || "")
-    };
+    const rows = await selectRows<Record<string, any>>(collection, undefined, [
+      `content:${collection}`,
+      "content:all"
+    ]);
+    return rows.map(normalizeSupabaseDocument);
   } catch (error) {
-    console.warn(`Unable to load Firestore collection "${collection}".`, error);
-    return {
-      documents: [] as FirestoreDocument[],
-      nextPageToken: ""
-    };
+    console.warn(`Unable to load Supabase table "${collection}".`, error);
+    return [] as ContentDocument[];
   }
-}
-
-async function fetchCollection(collection: string) {
-  const documents: FirestoreDocument[] = [];
-  let pageToken = "";
-
-  do {
-    const page = await fetchCollectionPage(collection, pageToken || undefined);
-    documents.push(...page.documents);
-    pageToken = page.nextPageToken;
-  } while (pageToken);
-
-  return documents;
 }
 
 function mergePlaceEntities(primary: PlaceEntity | null, fallback: PlaceEntity | null) {
@@ -347,7 +290,7 @@ function mergePlaceEntities(primary: PlaceEntity | null, fallback: PlaceEntity |
   };
 }
 
-function getPlaceAliasKeys(place: FirestoreDocument, normalized: PlaceEntity | null) {
+function getPlaceAliasKeys(place: ContentDocument, normalized: PlaceEntity | null) {
   return [
     ...getPlaceLookupKeys(place.id),
     ...getPlaceLookupKeys(normalized?.id),
@@ -498,7 +441,7 @@ export function getVibeIndicator(blog: TravelBlog) {
   return finalScore >= 8 ? "Well-Rounded City Escape" : "Curious Urban Detour";
 }
 
-function normalizeLoadedBlog(blog: Record<string, any>): TravelBlog {
+export function normalizeLoadedBlog(blog: Record<string, any>): TravelBlog {
   const normalizedScores = {
     walkability: clampScore(blog?.scores?.walkability, 7),
     affordability: clampScore(blog?.scores?.affordability, 7),
@@ -564,8 +507,8 @@ function normalizeLoadedBlog(blog: Record<string, any>): TravelBlog {
     skipIf: ensureArray<string>(blog.skipIf).map(String).filter(Boolean)
   };
 
-  normalized.showOnHome = blog.showOnHome !== false && blog.pinned !== false;
-  normalized.pinned = blog.showOnHome !== false && blog.pinned !== false;
+  normalized.showOnHome = blog.showOnHome !== false;
+  normalized.pinned = blog.pinned !== false;
   normalized.recommendationProfile = deriveRecommendationProfile(normalized);
   return normalized;
 }
@@ -652,7 +595,7 @@ function buildFallbackPlaceFromRef(ref: string, fallbackKind: string) {
   } satisfies PlaceEntity;
 }
 
-function buildPlacesById(places: FirestoreDocument[]) {
+function buildPlacesById(places: ContentDocument[]) {
   const map = new Map<string, PlaceEntity | null>();
   places.forEach((place) => {
     const normalized = normalizePlaceEntity(place, String(place.kind || "place"));
@@ -665,7 +608,7 @@ function buildPlacesById(places: FirestoreDocument[]) {
   return map;
 }
 
-function buildPlacesByCityAndKind(places: FirestoreDocument[]) {
+function buildPlacesByCityAndKind(places: ContentDocument[]) {
   const map = new Map<string, PlaceEntity[]>();
   places.forEach((place) => {
     const normalized = normalizePlaceEntity(place, String(place.kind || "place"));
@@ -737,13 +680,13 @@ function getPostSortTime(post: Record<string, any>) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function sortPostsByCreatedAt(posts: TravelBlog[]) {
+export function sortPostsByCreatedAt(posts: TravelBlog[]) {
   return [...posts].sort((a, b) => getPostSortTime(b) - getPostSortTime(a));
 }
 
 function combineCityAndItinerary(
-  cityDoc: FirestoreDocument,
-  itineraryDoc: FirestoreDocument | undefined,
+  cityDoc: ContentDocument,
+  itineraryDoc: ContentDocument | undefined,
   placesById: Map<string, PlaceEntity | null>,
   placesByCityAndKind: Map<string, PlaceEntity[]>
 ) {
@@ -765,12 +708,12 @@ function combineCityAndItinerary(
   });
 }
 
-function buildStructuredBlogs(
-  cities: FirestoreDocument[],
-  itineraries: FirestoreDocument[],
-  places: FirestoreDocument[]
+export function buildStructuredBlogs(
+  cities: ContentDocument[],
+  itineraries: ContentDocument[],
+  places: ContentDocument[]
 ) {
-  const itineraryByCityId = new Map<string, FirestoreDocument>();
+  const itineraryByCityId = new Map<string, ContentDocument>();
   const placesById = buildPlacesById(places);
   const placesByCityAndKind = buildPlacesByCityAndKind(places);
 
@@ -1001,7 +944,7 @@ function buildRecommendationDescription(intent: RecommendationIntent) {
   return parts.length ? `Ranked from ${parts.join(" • ")}.` : "Ranked from the saved destination dataset.";
 }
 
-function buildRecommendationDocument(intent: RecommendationIntent, blogs: TravelBlog[]) {
+export function buildRecommendationDocument(intent: RecommendationIntent, blogs: TravelBlog[]) {
   const filteredBlogs = blogs.filter((blog) => matchesRecommendationFilters(blog, (intent.filters || {}) as Record<string, any>));
   const limit = Number((intent.ranking as Record<string, unknown> | undefined)?.limit || 10);
 
@@ -1033,7 +976,7 @@ function buildRecommendationDocument(intent: RecommendationIntent, blogs: Travel
   } satisfies RecommendationDoc;
 }
 
-function normalizeRecommendationDoc(raw: Record<string, any>) {
+export function normalizeRecommendationDoc(raw: Record<string, any>) {
   return {
     id: String(raw.id || slugify(raw.title)),
     title: String(raw.title || "Recommendation Set"),
@@ -1054,13 +997,12 @@ function normalizeRecommendationDoc(raw: Record<string, any>) {
 }
 
 const getRawContentData = cache(async () => {
-  const [cities, itineraries, places, posts] = await Promise.all([
+  const [cities, itineraries, places] = await Promise.all([
     fetchCollection("cities"),
     fetchCollection("itineraries"),
-    fetchCollection("places"),
-    fetchCollection("posts")
+    fetchCollection("places")
   ]);
-  return { cities, itineraries, places, posts };
+  return { cities, itineraries, places };
 });
 
 const getRawRecommendationData = cache(async () => {
@@ -1069,10 +1011,8 @@ const getRawRecommendationData = cache(async () => {
 });
 
 export const getAllStories = cache(async () => {
-  const { cities, itineraries, places, posts } = await getRawContentData();
-  const structuredBlogs = sortPostsByCreatedAt(buildStructuredBlogs(cities, itineraries, places));
-  const legacyBlogs = sortPostsByCreatedAt(posts.map((doc) => normalizeLoadedBlog(doc)));
-  return mergeBlogCollections(structuredBlogs, legacyBlogs);
+  const { cities, itineraries, places } = await getRawContentData();
+  return sortPostsByCreatedAt(buildStructuredBlogs(cities, itineraries, places));
 });
 
 export function getStorySlug(blog: TravelBlog) {

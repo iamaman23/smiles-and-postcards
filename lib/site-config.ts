@@ -13,6 +13,9 @@ export const SITE_DESCRIPTION =
   "Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.";
 export const DEFAULT_REVALIDATE_SECONDS = 3600;
 export const PEXELS_API_KEY = process.env.PEXELS_API_KEY || process.env.PEXELS_API_KEY_CITY_IMAGES || "";
+export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export function getSiteUrl() {
   const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;

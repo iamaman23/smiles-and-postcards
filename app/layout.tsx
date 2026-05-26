@@ -51,7 +51,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <CookieBanner />
         <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" strategy="afterInteractive" />
         <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js" strategy="afterInteractive" />
-        <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js" strategy="afterInteractive" />
         <Script src="/analytics.js" type="module" strategy="afterInteractive" />
       </body>
     </html>

@@ -1,7 +1,7 @@
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
-const DEFAULT_COLLECTIONS = ["cities", "itineraries", "places", "posts", "recommendations", "siteConfig"] as const;
+const DEFAULT_COLLECTIONS = ["cities", "itineraries", "places", "recommendations", "siteConfig"] as const;
 
 function normalizeCollectionList(value: unknown) {
   if (!Array.isArray(value)) return [...DEFAULT_COLLECTIONS];
@@ -31,9 +31,9 @@ export async function POST(request: Request) {
     const collections = normalizeCollectionList(body?.collections);
 
     collections.forEach((collection) => {
-      revalidateTag(`firestore:${collection}`);
+      revalidateTag(`content:${collection}`);
     });
-    revalidateTag("firestore:content");
+    revalidateTag("content:all");
 
     return NextResponse.json({
       revalidated: true,

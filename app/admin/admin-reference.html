@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script src="./smilesandpostcards-recommendation-intents.js"></script>
 <script type="module" src="./analytics.js"></script>
 <style>
@@ -565,12 +564,12 @@ body:not(.is-admin) .admin-lock {
     <div class="intro">
       <div class="eyebrow">private admin</div>
       <h1>Generate polished travel cards from a city and your prompt.</h1>
-      <p>This admin panel can be deployed with Firebase login. Generate a post, review it, then publish it into Firestore so the public website updates for everyone.</p>
+      <p>This admin panel keeps Firebase for login only. Generate a post, review it, then publish it into Supabase so the public website updates for everyone.</p>
     </div>
 
     <section class="panel">
       <h2>Admin Login</h2>
-      <p class="hint">Use a Firebase email/password account listed in `firestore.rules`. Adding a user to a Firestore `users` collection alone does not grant publish access.</p>
+      <p class="hint">Use a Firebase email/password account that should be allowed to publish. Storage writes now run through authenticated server routes instead of browser-side Firestore rules.</p>
       <div class="auth-box">
         <div class="auth-row">
           <div class="field">
@@ -697,7 +696,7 @@ body:not(.is-admin) .admin-lock {
 
       <section class="panel" style="margin-top:1.5rem;">
         <h3>Saved Generated Posts</h3>
-        <p class="hint">These are stored in Firebase Firestore and read by the public page.</p>
+        <p class="hint">These are stored in Supabase and read by the public page.</p>
         <div class="actions-row">
           <button class="btn" type="button" data-track-event="button_click" data-track-param-location="saved_posts" data-track-param-label="clear_generated_posts" onclick="clearSaved()">Clear generated posts</button>
         </div>
@@ -720,7 +719,6 @@ const FIREBASE_CONFIG = {
   measurementId: "G-HPH5NHBT8M"
 };
 let generatedDraft = null;
-let FIRESTORE_DB = null;
 let FIREBASE_AUTH = null;
 let currentAdmin = null;
 let RECOMMENDATION_DEBUG_BLOGS = [];
@@ -1278,7 +1276,7 @@ async function ensureRenderableBlogImages(blog) {
     version: 2,
     tags: normalizeTags(blog.country, blog.tags, blog.city),
     showOnHome: blog.showOnHome !== false,
-    pinned: blog.showOnHome !== false,
+    pinned: blog.pinned !== false,
     meta: normalizedMeta,
     geo: {
       lat: Number(blog?.geo?.lat) || 0,
@@ -1352,11 +1350,10 @@ function getFirebaseAuthEnvironmentMessage() {
 
 function initFirebase({ requireAuth = false } = {}) {
   if (!isFirebaseConfigured()) {
-    setStatus('Paste your Firebase config into this file before using deployed admin publishing.', 'err');
+    setStatus('Paste your Firebase config into this file before using deployed admin sign-in.', 'err');
     return false;
   }
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-  FIRESTORE_DB = firebase.firestore();
   if (requireAuth && !isFirebaseAuthEnvironmentSupported()) {
     setStatus(getFirebaseAuthEnvironmentMessage(), 'err');
     FIREBASE_AUTH = null;
@@ -1367,11 +1364,59 @@ function initFirebase({ requireAuth = false } = {}) {
 }
 
 function requireAdmin() {
-  if (!currentAdmin || !FIRESTORE_DB) {
+  if (!currentAdmin) {
     setStatus('Sign in with your Firebase admin account first.', 'err');
     return false;
   }
   return true;
+}
+
+async function getAdminIdToken() {
+  if (!currentAdmin) throw new Error('Firebase does not see an authenticated admin session. Sign in again and retry.');
+  return currentAdmin.getIdToken();
+}
+
+async function syncCurrentFirebaseUser() {
+  const token = await getAdminIdToken();
+  const response = await fetch('/api/auth/sync-user', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `User sync failed with status ${response.status}.`);
+  }
+  return payload;
+}
+
+async function loadAdminView(view) {
+  const response = await fetch(`/api/admin/content?view=${encodeURIComponent(view)}`, {
+    cache: 'no-store'
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || `Admin request failed with status ${response.status}.`);
+  }
+  return payload;
+}
+
+async function callAdminApi(action, body = {}) {
+  const token = await getAdminIdToken();
+  const response = await fetch('/api/admin/content', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ action, ...body })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Admin action failed with status ${response.status}.`);
+  }
+  return payload;
 }
 
 const BLOG_SCHEMA = {
@@ -1539,6 +1584,9 @@ RULES:
 - bestSeason should be concise, e.g. "Apr-Jun, Sep-Oct"
 - date should be the current month/year or a natural editorial date
 - itinerary length must match the days value
+- every itinerary day must include 2 to 5 destination names in spots
+- each spots entry must be a short place or area name only, not a sentence
+- if a place is named in the itinerary text, include it in that day's spots array
 
 TAGS (VERY IMPORTANT):
 - tags must be high-quality and useful for filtering
@@ -2135,7 +2183,7 @@ function buildRecommendationDocument(intent, blogs, limit = DEFAULT_RECOMMENDATI
     })),
     resultCount: ranked.length,
     coverCityId: ranked[0]?.cityId || '',
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    updatedAt: new Date().toISOString()
   };
 }
 
@@ -2215,6 +2263,28 @@ function buildPlaceId(cityId, name) {
   return `${cityId}-place-${slugify(name)}`;
 }
 
+function uniqueStrings(values) {
+  return [...new Set(ensureArray(values).map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function normalizeItineraryDay(day) {
+  const explicitSpots = uniqueStrings(day?.spots);
+  return {
+    ...(day || {}),
+    day: String(day?.day || ''),
+    title: String(day?.title || ''),
+    text: String(day?.text || ''),
+    spots: explicitSpots
+  };
+}
+
+function assertItinerarySpots(itinerary) {
+  const invalidDay = ensureArray(itinerary).find(day => !ensureArray(day?.spots).length);
+  if (invalidDay) {
+    throw new Error(`Each itinerary day must include destination spots. Missing spots for "${String(invalidDay.title || invalidDay.day || 'Untitled day')}".`);
+  }
+}
+
 function buildPlaceDocuments(blog, cityId) {
   const placesById = new Map();
   const registerPlace = (rawPlace, kind) => {
@@ -2240,10 +2310,13 @@ function buildPlaceDocuments(blog, cityId) {
     return placeId;
   };
 
-  const itinerary = ensureArray(blog.itinerary).map(day => ({
-    ...day,
-    spots: ensureArray(day?.spots).map(spot => registerPlace(spot, 'itinerary')).filter(Boolean)
-  }));
+  const itinerary = ensureArray(blog.itinerary).map(rawDay => {
+    const day = normalizeItineraryDay(rawDay);
+    return {
+      ...day,
+      spots: ensureArray(day.spots).map(spot => registerPlace(spot, 'itinerary')).filter(Boolean)
+    };
+  });
   const food = ensureArray(blog.food).map(item => registerPlace(item, 'food')).filter(Boolean);
   const gems = ensureArray(blog.gems).map(item => registerPlace(item, 'gem')).filter(Boolean);
 
@@ -2268,7 +2341,7 @@ function buildFirestoreDocuments(blog) {
     image: blog.image,
     heroImage: blog.heroImage || blog.image,
     featured: Boolean(blog.featured),
-    pinned: blog.showOnHome !== false && blog.pinned !== false,
+    pinned: blog.pinned !== false,
     showOnHome: blog.showOnHome !== false,
     bestSeason: blog.bestSeason,
     date: blog.date,
@@ -2358,12 +2431,13 @@ function normalizeBlog(raw) {
     highlights: ensureArray(clean.highlights),
     warnings: ensureArray(clean.warnings),
     skipIf: ensureArray(clean.skipIf),
-    itinerary: ensureArray(clean.itinerary),
+    itinerary: ensureArray(clean.itinerary).map(normalizeItineraryDay),
     food: ensureArray(clean.food),
     gems: ensureArray(clean.gems),
     budgetBreakdown: forceUsdBudgetBreakdown(clean.budgetBreakdown),
     budgetSymbol: '$'
   };
+  assertItinerarySpots(normalized.itinerary);
   normalized.recommendationProfile = deriveRecommendationProfile(normalized);
   return normalized;
 }
@@ -2383,8 +2457,8 @@ function normalizeFirestoreBlog(blog) {
   const normalized = {
     ...blog,
     cityId: blog.cityId || blog.id,
-    showOnHome: blog.showOnHome !== false && blog.pinned !== false,
-    pinned: blog.showOnHome !== false && blog.pinned !== false,
+    showOnHome: blog.showOnHome !== false,
+    pinned: blog.pinned !== false,
     tags: normalizeTags(blog.country, blog.tags, blog.city, blog?.meta?.continent),
     stats: blog.stats ? { ...blog.stats, walkScore: formatWalkScore(blog.stats.walkScore) } : blog.stats,
     meta: {
@@ -2515,18 +2589,14 @@ function formatFirebaseAuthError(error) {
 
 function formatFirestoreActionError(error, fallbackMessage) {
   const code = error && error.code;
-  if (code === 'permission-denied') {
-    const email = currentAdmin?.email || 'your current account';
-    return `Firestore rejected this action for ${email}. The live project only grants writes to emails allowed in deployed Firebase rules, so add the email there and deploy firestore.rules. A Firestore users document by itself does not grant write access.`;
-  }
-  if (code === 'unauthenticated') {
+  if (code === 'unauthenticated' || code === 401) {
     return 'Firebase does not see an authenticated admin session. Sign in again and retry.';
   }
   return (error && error.message) || fallbackMessage;
 }
 
 function ensureFirebaseReady({ requireSignedInAdmin = false } = {}) {
-  if (!FIRESTORE_DB && !initFirebase()) return false;
+  if (!initFirebase()) return false;
   if (requireSignedInAdmin && !requireAdmin()) return false;
   return true;
 }
@@ -2554,61 +2624,31 @@ async function requestPublishedSiteRefresh(collections) {
 
 function getPublishedSiteRefreshMessage(result) {
   if (result?.ok) return ' The public site cache was refreshed immediately.';
-  return ` The Firebase save worked, but public pages may take up to ${SITE_REVALIDATION_FALLBACK_MINUTES} minutes to catch up.`;
+  return ` The Supabase save worked, but public pages may take up to ${SITE_REVALIDATION_FALLBACK_MINUTES} minutes to catch up.`;
 }
 
 async function getRecommendationSourceBlogs() {
-  const [citiesSnapshot, itinerariesSnapshot, placesSnapshot] = await Promise.all([
-    FIRESTORE_DB.collection('cities').get(),
-    FIRESTORE_DB.collection('itineraries').get(),
-    FIRESTORE_DB.collection('places').get()
-  ]);
-  const structuredBlogs = sortPostsByCreatedAt(buildStructuredSavedItems(citiesSnapshot, itinerariesSnapshot, placesSnapshot));
-  const postsSnapshot = await FIRESTORE_DB.collection('posts').get();
-  const legacyBlogs = sortPostsByCreatedAt(postsSnapshot.docs.map(doc => normalizeFirestoreBlog({ id: doc.id, ...doc.data() })));
-  return mergeBlogCollections(structuredBlogs, legacyBlogs);
+  const payload = await loadAdminView('saved');
+  return ensureArray(payload.items);
 }
 
 async function getSavedBlogsFromFirestore() {
-  const [citiesSnapshot, itinerariesSnapshot, placesSnapshot, postsSnapshot] = await Promise.all([
-    FIRESTORE_DB.collection('cities').get(),
-    FIRESTORE_DB.collection('itineraries').get(),
-    FIRESTORE_DB.collection('places').get(),
-    FIRESTORE_DB.collection('posts').get()
-  ]);
-  const structuredBlogs = sortPostsByCreatedAt(buildStructuredSavedItems(citiesSnapshot, itinerariesSnapshot, placesSnapshot));
-  const legacyBlogs = sortPostsByCreatedAt(postsSnapshot.docs.map(doc => normalizeFirestoreBlog({ id: doc.id, ...doc.data() })));
-  return mergeBlogCollections(structuredBlogs, legacyBlogs);
+  const payload = await loadAdminView('saved');
+  return ensureArray(payload.items);
 }
 
 async function resolveSavedDocTarget(id) {
-  const [cityDoc, postDoc] = await Promise.all([
-    FIRESTORE_DB.collection('cities').doc(id).get(),
-    FIRESTORE_DB.collection('posts').doc(id).get()
-  ]);
-  if (cityDoc.exists) return { collection: 'cities', doc: cityDoc };
-  if (postDoc.exists) return { collection: 'posts', doc: postDoc };
-  throw new Error('This saved card no longer exists in Firestore. Refresh the list and try again.');
+  const saved = await getSavedBlogsFromFirestore();
+  const target = saved.find(item => item.id === id || item.cityId === id);
+  if (!target) throw new Error('This saved card no longer exists in Supabase. Refresh the list and try again.');
+  return { collection: 'cities', doc: target };
 }
 
 async function regenerateRecommendationsFromCurrentData() {
   const intents = getRecommendationIntents();
   if (!intents.length) return { generated: 0 };
-
-  const blogs = await getRecommendationSourceBlogs();
-  if (!blogs.length) return { generated: 0 };
-
-  const batch = FIRESTORE_DB.batch();
-  const generated = intents.map(intent => buildRecommendationDocument(intent, blogs));
-  generated.forEach(item => {
-    batch.set(FIRESTORE_DB.collection('recommendations').doc(item.id), {
-      ...item,
-      publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      publishedBy: currentAdmin.email
-    }, { merge: true });
-  });
-  await batch.commit();
-  return { generated: generated.length };
+  const result = await callAdminApi('publishRecommendations');
+  return { generated: Number(result.generated || 0) };
 }
 
 async function generateStory() {
@@ -2714,46 +2754,12 @@ async function saveStory() {
   if (!requireAdmin()) return;
 
   try {
-    const { cityId, itineraryId, cityDoc, itineraryDoc, placeDocs } = buildFirestoreDocuments(generatedDraft);
-    const existingSaved = await getSavedBlogsFromFirestore();
-    if (generatedDraft.featured && getFeaturedCount(existingSaved, cityId) >= 2) {
-      setStatus('Only 2 featured cards are allowed. Unfeature one saved card first.', 'err');
-      return;
-    }
-    const now = firebase.firestore.FieldValue.serverTimestamp();
-    await FIRESTORE_DB.collection('cities').doc(cityId).set({
-      ...cityDoc,
-      createdAt: generatedDraft.createdAt || now,
-      updatedAt: now,
-      publishedBy: currentAdmin.email
-    }, { merge: true });
-    await FIRESTORE_DB.collection('itineraries').doc(itineraryId).set({
-      ...itineraryDoc,
-      createdAt: generatedDraft.createdAt || now,
-      updatedAt: now,
-      publishedBy: currentAdmin.email
-    });
-    const existingPlacesSnapshot = await FIRESTORE_DB.collection('places').where('cityId', '==', cityId).get();
-    const nextPlaceIds = new Set(placeDocs.map(place => place.id));
-    const batch = FIRESTORE_DB.batch();
-    existingPlacesSnapshot.docs.forEach(doc => {
-      if (!nextPlaceIds.has(doc.id)) batch.delete(doc.ref);
-    });
-    placeDocs.forEach(place => {
-      batch.set(FIRESTORE_DB.collection('places').doc(place.id), {
-        ...place,
-        updatedAt: now,
-        createdAt: generatedDraft.createdAt || now,
-        publishedBy: currentAdmin.email
-      }, { merge: true });
-    });
-    await batch.commit();
+    const result = await callAdminApi('saveStory', { draft: generatedDraft });
     let recommendationMessage = '';
     try {
-      const result = await regenerateRecommendationsFromCurrentData();
       await loadRecommendationsAdmin();
-      if (result.generated) {
-        recommendationMessage = ` Recommendations regenerated (${result.generated} sets).`;
+      if (result.generatedRecommendations) {
+        recommendationMessage = ` Recommendations regenerated (${result.generatedRecommendations} sets).`;
         setRecommendationsStatus(`Recommendations regenerated automatically after saving ${generatedDraft.city}.`, 'ok');
       }
     } catch (recommendationError) {
@@ -2762,10 +2768,9 @@ async function saveStory() {
       recommendationMessage = ` ${message}`;
       setRecommendationsStatus(message, 'err');
     }
-    const refreshResult = await requestPublishedSiteRefresh(['cities', 'itineraries', 'places', 'posts', 'recommendations']);
     setStatus(
-      `${generatedDraft.city} published to Firebase.${getPublishedSiteRefreshMessage(refreshResult)}${recommendationMessage}`,
-      refreshResult.ok ? 'ok' : ''
+      `${generatedDraft.city} published to Supabase. The public site cache was refreshed immediately.${recommendationMessage}`,
+      'ok'
     );
     trackEventSafe('form_submit_success', {
       form_name: 'publish_story',
@@ -2774,12 +2779,12 @@ async function saveStory() {
     });
     await loadSaved();
   } catch (error) {
-    setStatus(formatFirestoreActionError(error, 'Unable to save to Firebase.'), 'err');
+    setStatus(formatFirestoreActionError(error, 'Unable to save to Supabase.'), 'err');
     trackEventSafe('form_submit_error', {
       form_name: 'publish_story',
       location: 'generation_setup',
       city: generatedDraft.city,
-      reason: error.message || 'firebase_save_failed'
+      reason: error.message || 'supabase_save_failed'
     });
   }
 }
@@ -2787,11 +2792,17 @@ async function saveStory() {
 async function loadSaved() {
   let saved = readSavedLocal();
   try {
-    if (!FIRESTORE_DB && !initFirebase()) throw new Error('Firebase is not configured yet.');
+    if (!initFirebase()) throw new Error('Firebase auth is not configured yet.');
     saved = await getSavedBlogsFromFirestore();
     localStorage.setItem(GENERATED_BLOGS_KEY, JSON.stringify(saved));
   } catch (error) {
-    console.info('Using local saved posts fallback until Firebase is configured.', error);
+    if (currentAdmin) {
+      console.error('Unable to load saved posts from Supabase.', error);
+      saved = [];
+      setStatus(formatFirestoreActionError(error, 'Unable to load saved posts from Supabase.'), 'err');
+    } else {
+      console.info('Using local saved posts fallback until Supabase content is available.', error);
+    }
   }
 
   const list = document.getElementById('savedList');
@@ -2858,40 +2869,24 @@ async function loadRecommendationsAdmin() {
   }
 
   try {
-    if (!ensureFirebaseReady()) return;
-    const [snapshot, blogs] = await Promise.all([
-      FIRESTORE_DB.collection('recommendations').get(),
+    const [recommendationPayload, blogs] = await Promise.all([
+      loadAdminView('recommendations'),
       getRecommendationSourceBlogs()
     ]);
+    const items = ensureArray(recommendationPayload.items);
     populateRecommendationDebugCities(blogs);
-    const docsById = new Map(snapshot.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
-    const liveById = new Map(intents.map(intent => {
-      const liveDoc = buildRecommendationDocument(intent, blogs);
-      return [intent.id, liveDoc];
-    }));
-    renderRecommendationsAdminList(intents.map(intent => {
-      const liveDoc = liveById.get(intent.id) || {
-        id: intent.id,
-        title: intent.title,
-        cityIds: [],
-        resultCount: 0
-      };
-      return {
-        ...(docsById.get(intent.id) || {}),
-        ...liveDoc
-      };
-    }));
+    renderRecommendationsAdminList(items);
     setStatus(
-      snapshot.empty
+      !items.length
         ? 'No recommendation sets have been published yet. Use "Generate recommendation sets" to create them.'
-        : `Loaded ${snapshot.size} published recommendation set${snapshot.size === 1 ? '' : 's'}.`,
-      snapshot.empty ? '' : 'ok'
+        : `Loaded ${items.length} published recommendation set${items.length === 1 ? '' : 's'}.`,
+      !items.length ? '' : 'ok'
     );
     setRecommendationsStatus(
-      snapshot.empty
+      !items.length
         ? `Showing live recommendation matches from ${blogs.length} saved cit${blogs.length === 1 ? 'y' : 'ies'}.`
-        : `Loaded ${snapshot.size} published recommendation set${snapshot.size === 1 ? '' : 's'} and refreshed live matches from ${blogs.length} saved cit${blogs.length === 1 ? 'y' : 'ies'}.`,
-      snapshot.empty ? '' : 'ok'
+        : `Loaded ${items.length} published recommendation set${items.length === 1 ? '' : 's'} and refreshed live matches from ${blogs.length} saved cit${blogs.length === 1 ? 'y' : 'ies'}.`,
+      !items.length ? '' : 'ok'
     );
   } catch (error) {
     console.info('Unable to load published recommendations.', error);
@@ -2921,19 +2916,18 @@ async function publishRecommendations() {
     setRecommendationsStatus('Generating recommendation sets from published destinations...', '');
     const result = await regenerateRecommendationsFromCurrentData();
     if (!result.generated) {
-      setStatus('No source destinations were found in `cities` or legacy `posts`. Publish at least one destination first.', 'err');
-      setRecommendationsStatus('No source destinations were found in `cities` or legacy `posts`.', 'err');
+      setStatus('No source destinations were found in `cities`. Publish at least one destination first.', 'err');
+      setRecommendationsStatus('No source destinations were found in `cities`.', 'err');
       return;
     }
     await loadRecommendationsAdmin();
-    const refreshResult = await requestPublishedSiteRefresh(['recommendations']);
     setStatus(
-      `Published ${result.generated} recommendation sets.${getPublishedSiteRefreshMessage(refreshResult)}`,
-      refreshResult.ok ? 'ok' : ''
+      `Published ${result.generated} recommendation sets. The public site cache was refreshed immediately.`,
+      'ok'
     );
     setRecommendationsStatus(
-      `Published ${result.generated} recommendation sets.${getPublishedSiteRefreshMessage(refreshResult)}`,
-      refreshResult.ok ? 'ok' : ''
+      `Published ${result.generated} recommendation sets. The public site cache was refreshed immediately.`,
+      'ok'
     );
   } catch (error) {
     console.error(error);
@@ -2946,17 +2940,11 @@ async function toggleHomeVisibility(id, nextVisible) {
   if (!requireAdmin()) return;
 
   try {
-    const target = await resolveSavedDocTarget(id);
-    await FIRESTORE_DB.collection(target.collection).doc(id).update({
-      showOnHome: nextVisible,
-      pinned: nextVisible,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    const refreshResult = await requestPublishedSiteRefresh([target.collection]);
+    await callAdminApi('toggleHomeVisibility', { id, nextVisible });
     await loadSaved();
     setStatus(
-      `${nextVisible ? 'Card will be shown on the home page.' : 'Card hidden from the home page.'}${getPublishedSiteRefreshMessage(refreshResult)}`,
-      refreshResult.ok ? 'ok' : ''
+      `${nextVisible ? 'Card will be shown on the home page.' : 'Card hidden from the home page.'} The public site cache was refreshed immediately.`,
+      'ok'
     );
   } catch (error) {
     setStatus(formatFirestoreActionError(error, 'Unable to update home page visibility.'), 'err');
@@ -2966,14 +2954,8 @@ async function toggleHomeVisibility(id, nextVisible) {
 async function loadHomepageSettings() {
   renderHomeTagSettings();
   try {
-    if (!FIRESTORE_DB && !initFirebase()) throw new Error('Firebase is not configured yet.');
-    const doc = await FIRESTORE_DB.collection('siteConfig').doc('homepage').get();
-    if (doc.exists) {
-      const data = doc.data() || {};
-      HOME_FILTER_TAGS = ensureArray(data.filterTags).length ? ensureArray(data.filterTags).map(slugify) : [...DEFAULT_HOME_FILTER_TAGS];
-    } else {
-      HOME_FILTER_TAGS = [...DEFAULT_HOME_FILTER_TAGS];
-    }
+    const payload = await loadAdminView('homepage');
+    HOME_FILTER_TAGS = ensureArray(payload.filterTags).length ? ensureArray(payload.filterTags).map(slugify) : [...DEFAULT_HOME_FILTER_TAGS];
   } catch (error) {
     console.info('Using default homepage tag settings.', error);
     HOME_FILTER_TAGS = [...DEFAULT_HOME_FILTER_TAGS];
@@ -2990,12 +2972,8 @@ async function toggleHomeFilterTag(tag, enabled) {
   renderHomeTagSettings();
 
   try {
-    await FIRESTORE_DB.collection('siteConfig').doc('homepage').set({
-      filterTags: HOME_FILTER_TAGS,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    const refreshResult = await requestPublishedSiteRefresh(['siteConfig']);
-    setStatus(`Home page filter tags updated.${getPublishedSiteRefreshMessage(refreshResult)}`, refreshResult.ok ? 'ok' : '');
+    await callAdminApi('updateHomepageFilterTags', { filterTags: HOME_FILTER_TAGS });
+    setStatus('Home page filter tags updated. The public site cache was refreshed immediately.', 'ok');
   } catch (error) {
     setStatus(error.message || 'Unable to update home page filter tags.', 'err');
   }
@@ -3005,23 +2983,11 @@ async function toggleFeatured(id, nextFeatured) {
   if (!requireAdmin()) return;
 
   try {
-    const [savedBlogs, target] = await Promise.all([
-      getSavedBlogsFromFirestore(),
-      resolveSavedDocTarget(id)
-    ]);
-    if (nextFeatured && getFeaturedCount(savedBlogs, id) >= 2) {
-      setStatus('Only 2 featured cards are allowed. Unfeature one saved card first.', 'err');
-      return;
-    }
-    await FIRESTORE_DB.collection(target.collection).doc(id).update({
-      featured: nextFeatured,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    const refreshResult = await requestPublishedSiteRefresh([target.collection]);
+    await callAdminApi('toggleFeatured', { id, nextFeatured });
     await loadSaved();
     setStatus(
-      `${nextFeatured ? 'Card marked as featured.' : 'Card removed from featured.'}${getPublishedSiteRefreshMessage(refreshResult)}`,
-      refreshResult.ok ? 'ok' : ''
+      `${nextFeatured ? 'Card marked as featured.' : 'Card removed from featured.'} The public site cache was refreshed immediately.`,
+      'ok'
     );
   } catch (error) {
     setStatus(formatFirestoreActionError(error, 'Unable to update featured state.'), 'err');
@@ -3032,52 +2998,26 @@ async function removeSaved(id) {
   if (!requireAdmin()) return;
 
   try {
-    const target = await resolveSavedDocTarget(id);
-    await FIRESTORE_DB.collection(target.collection).doc(id).delete();
-    const [itinerarySnapshot, placesSnapshot] = await Promise.all([
-      FIRESTORE_DB.collection('itineraries').where('cityId', '==', id).get(),
-      FIRESTORE_DB.collection('places').where('cityId', '==', id).get()
-    ]);
-    const batch = FIRESTORE_DB.batch();
-    if (!itinerarySnapshot.empty) {
-      itinerarySnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    }
-    if (!placesSnapshot.empty) {
-      placesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    }
-    if (!itinerarySnapshot.empty || !placesSnapshot.empty) await batch.commit();
-    const refreshResult = await requestPublishedSiteRefresh([target.collection, 'itineraries', 'places', 'recommendations']);
+    await callAdminApi('removeSaved', { id });
     await loadSaved();
-    setStatus(`Generated post removed from Firebase.${getPublishedSiteRefreshMessage(refreshResult)}`, refreshResult.ok ? 'ok' : '');
+    setStatus('Generated post removed from Supabase. The public site cache was refreshed immediately.', 'ok');
   } catch (error) {
     setStatus(formatFirestoreActionError(error, 'Unable to remove generated post.'), 'err');
   }
 }
 
 async function clearSaved() {
-  if (!confirm('Clear all generated Smiles and Postcards posts from Firebase?')) return;
+  if (!confirm('Clear all generated Smiles and Postcards posts from Supabase?')) return;
   if (!requireAdmin()) return;
 
   try {
-    const [citiesSnapshot, itinerariesSnapshot, placesSnapshot, postsSnapshot] = await Promise.all([
-      FIRESTORE_DB.collection('cities').get(),
-      FIRESTORE_DB.collection('itineraries').get(),
-      FIRESTORE_DB.collection('places').get(),
-      FIRESTORE_DB.collection('posts').get()
-    ]);
-    const batch = FIRESTORE_DB.batch();
-    citiesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    itinerariesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    placesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    postsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
+    await callAdminApi('clearSaved');
     localStorage.removeItem(GENERATED_BLOGS_KEY);
     generatedDraft = null;
     document.getElementById('saveBtn').disabled = true;
     document.getElementById('preview').innerHTML = '';
     document.getElementById('jsonBox').textContent = 'Generated JSON will appear here.';
-    const refreshResult = await requestPublishedSiteRefresh(['cities', 'itineraries', 'places', 'posts', 'recommendations']);
-    setStatus(`Generated posts cleared from Firebase.${getPublishedSiteRefreshMessage(refreshResult)}`, refreshResult.ok ? 'ok' : '');
+    setStatus('Generated posts cleared from Supabase. The public site cache was refreshed immediately.', 'ok');
     loadSaved();
   } catch (error) {
     setStatus(error.message || 'Unable to clear generated posts.', 'err');
@@ -3144,6 +3084,7 @@ function watchAdminAuth() {
     document.body.classList.toggle('is-admin', Boolean(user));
     if (authUser) authUser.textContent = user ? `Signed in as ${user.email}` : 'Not signed in.';
     if (user) {
+      syncCurrentFirebaseUser().catch(error => console.warn('Unable to sync Firebase user.', error));
       loadSaved();
       loadRecommendationsAdmin();
     }

@@ -7,15 +7,17 @@ Smiles and Postcards is a Next.js 15 App Router site for destination stories and
 - Next.js 15
 - React 19
 - TypeScript
-- Firebase Auth and Firestore APIs
+- Firebase Auth
+- Supabase storage via REST
 - Vercel-ready deployment
 
 ## Project Structure
 
 - `app/`: routes, metadata, sitemap, and global styles
 - `components/site/`: page shells and reusable UI
-- `lib/`: site config, Firestore data loading, and recommendation logic
+- `lib/`: site config, Supabase data loading, admin content helpers, and recommendation logic
 - `public/analytics.js`: client analytics bootstrap
+- `supabase/schema.sql`: base Supabase tables and indexes for published content
 
 ## Local Development
 
@@ -35,6 +37,9 @@ The site can derive its canonical base URL from Vercel automatically. If needed,
 
 - `NEXT_PUBLIC_SITE_URL`
 - `SITE_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `PEXELS_API_KEY` or `PEXELS_API_KEY_CITY_IMAGES` for server-side city image search
 
 ## City Images

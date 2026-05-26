@@ -2034,6 +2034,26 @@ input:focus-visible,
   font-size: 1.4rem;
   margin: 0;
 }
+.itinerary-tabs__location {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+.itinerary-tabs__location-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(255, 248, 238, 0.92);
+  color: var(--text-muted);
+  border: 1px solid rgba(184, 131, 76, 0.18);
+  font-size: 0.79rem;
+  font-weight: 600;
+  line-height: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .itinerary-tabs__text {
   color: var(--text-muted);
   line-height: 1.7;
