@@ -35,3 +35,11 @@ The site can derive its canonical base URL from Vercel automatically. If needed,
 
 - `NEXT_PUBLIC_SITE_URL`
 - `SITE_URL`
+- `PEXELS_API_KEY` or `PEXELS_API_KEY_CITY_IMAGES` for server-side city image search
+
+## City Images
+
+- Dynamic city images are resolved through `/city-images/[country]/[city]`
+- The image resolver uses the Pexels Photo Search API with a server-side API key
+- `variant=card` prefers wider city snapshots such as skylines or cityscapes
+- `variant=hero` prefers famous landmarks, monuments, cathedrals, bridges, or old-town imagery

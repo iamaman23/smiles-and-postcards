@@ -12,6 +12,7 @@ export const SITE_NAME = "Smiles and Postcards";
 export const SITE_DESCRIPTION =
   "Editorial travel stories, practical route planning, and slower itineraries for people who want the place to feel real.";
 export const DEFAULT_REVALIDATE_SECONDS = 3600;
+export const PEXELS_API_KEY = process.env.PEXELS_API_KEY || process.env.PEXELS_API_KEY_CITY_IMAGES || "";
 
 export function getSiteUrl() {
   const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;

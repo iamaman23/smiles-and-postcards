@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ItineraryTabs } from "./ItineraryTabs";
+import { SiteFooter } from "./SiteFooter";
 import {
   getBreakdownScores,
   getBudgetTier,
@@ -345,14 +346,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
         </aside>
       </div>
 
-      <footer className="footer">
-        <div className="footer__left">Smiles and <span>Postcards</span> © 2026</div>
-        <div className="footer__links">
-          <a href="/">Stories</a>
-          <a href="/recommendations">Recommendations</a>
-          <a href="/about">About</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
