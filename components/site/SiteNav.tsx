@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { FirebaseCompat } from "../../lib/firebase-compat";
+import type { FirebaseAuthUser, FirebaseCompat } from "../../lib/firebase-compat";
+import { syncFirebaseUserSession } from "../../lib/firebase-user-sync";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyA0kSb-V1yZuq_j4gUCUC43GD-UK1Wzfh0",
@@ -37,7 +38,12 @@ export function SiteNav() {
         return;
       }
 
-      unsubscribe = auth.onAuthStateChanged((user) => setIsSignedIn(Boolean(user)));
+      unsubscribe = auth.onAuthStateChanged((user: FirebaseAuthUser | null) => {
+        setIsSignedIn(Boolean(user));
+        if (user) {
+          void syncFirebaseUserSession(user).catch((error) => console.warn("Unable to sync Firebase user.", error));
+        }
+      });
     };
 
     start();
