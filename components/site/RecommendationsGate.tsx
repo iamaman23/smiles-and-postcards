@@ -67,8 +67,8 @@ export function RecommendationsGate() {
         <div className="reco-access__eyebrow">Members Only</div>
         <h1 className="reco-access__title">Sign in with Google to unlock recommendation routes.</h1>
         <p className="reco-access__text">
-          The recommendation library is gated behind Firebase Google login. Once you are signed in,
-          the curated lanes and ranked city pages become available.
+          Sign in once to keep your travel planning in one place. You&apos;ll be able to unlock recommendation routes,
+          bookmark trips you want to revisit, and download itineraries without starting from scratch each time.
         </p>
         <div className="reco-access__actions">
           <button className="search__btn" type="button" onClick={handleSignIn}>

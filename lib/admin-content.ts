@@ -18,6 +18,7 @@ type PlaceDraft = {
   kind?: string;
   name?: string;
   title?: string;
+  geo?: Record<string, unknown>;
   desc?: string;
   description?: string;
   tip?: string;
@@ -36,9 +37,30 @@ type CityRow = Record<string, unknown> & { id: string };
 type ItineraryRow = Record<string, unknown> & { id: string; city_id: string };
 type PlaceRow = Record<string, unknown> & { id: string; city_id: string };
 type RecommendationRow = Record<string, unknown> & { id: string };
+const MIN_COORDINATE_DECIMALS = 6;
 
 function toCamelCaseKey(value: string) {
   return value.replace(/_([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+function countCoordinateDecimals(value: number) {
+  const normalized = value.toString().toLowerCase();
+  if (normalized.includes("e-")) {
+    const [, exponent = "0"] = normalized.split("e-");
+    return Number(exponent);
+  }
+  const [, fraction = ""] = normalized.split(".");
+  return fraction.length;
+}
+
+function hasRequiredCoordinatePrecision(value: unknown) {
+  if (typeof value === "number") {
+    // Numeric coordinates lose trailing zeroes in JS, so once a point has been normalized
+    // through our pipeline we should accept the finite numeric value as canonical.
+    return Number.isFinite(value);
+  }
+  if (typeof value !== "string") return false;
+  return countCoordinateDecimals(Number(value)) >= MIN_COORDINATE_DECIMALS || countCoordinateDecimals(Number.parseFloat(value)) >= MIN_COORDINATE_DECIMALS || String(value).split(".")[1]?.length >= MIN_COORDINATE_DECIMALS;
 }
 
 function normalizeDocument(row: Record<string, any>): ContentDocument {
@@ -69,8 +91,62 @@ function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function normalizeGeoPoint(value: unknown) {
+  const lat = Number((value as Record<string, unknown> | null)?.lat);
+  const lng = Number((value as Record<string, unknown> | null)?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return undefined;
+  return {
+    lat: Number(lat.toFixed(MIN_COORDINATE_DECIMALS)),
+    lng: Number(lng.toFixed(MIN_COORDINATE_DECIMALS))
+  };
+}
+
+function formatCoordinateLabel(kind: string, label: string) {
+  const normalizedKind = String(kind || "place");
+  if (normalizedKind === "itinerary") return `itinerary spot "${label}"`;
+  if (normalizedKind === "food") return `food spot "${label}"`;
+  if (normalizedKind === "gem") return `hidden gem "${label}"`;
+  return `${normalizedKind} "${label}"`;
+}
+
+function assertValidGeoPoint(value: unknown, label: string, { requireExactPrecision = true }: { requireExactPrecision?: boolean } = {}) {
+  const point = normalizeGeoPoint(value);
+  if (!point) {
+    throw new Error(`Missing valid coordinates for ${label}. Every saved location must include real latitude and longitude values.`);
+  }
+  if (Math.abs(point.lat) < 0.000001 && Math.abs(point.lng) < 0.000001) {
+    throw new Error(`Refusing to save placeholder coordinates for ${label}. Do not use 0,0 or empty fallback coordinates.`);
+  }
+  if (
+    requireExactPrecision &&
+    (!hasRequiredCoordinatePrecision((value as Record<string, unknown> | null)?.lat) || !hasRequiredCoordinatePrecision((value as Record<string, unknown> | null)?.lng))
+  ) {
+    throw new Error(`Coordinates for ${label} must use at least ${MIN_COORDINATE_DECIMALS} decimal places. Approximate 3-decimal coordinates are not allowed.`);
+  }
+  return point;
+}
+
+function normalizeSpotRef(value: unknown) {
+  if (typeof value === "string") {
+    const name = value.trim();
+    return name ? name : null;
+  }
+
+  const place = normalizePlace((value || {}) as PlaceDraft, "itinerary");
+  if (!place.name) return null;
+  return place;
+}
+
 function normalizeItineraryDay(day: Record<string, unknown>) {
-  const explicitSpots = uniqueStrings(ensureArray<string>(day?.spots));
+  const explicitSpots = ensureArray(day?.spots)
+    .map(normalizeSpotRef)
+    .filter((spot): spot is string | ReturnType<typeof normalizePlace> => Boolean(spot))
+    .filter((spot, index, spots) => {
+      const name = typeof spot === "string" ? spot : spot.name;
+      const slug = slugify(name);
+      return spots.findIndex((entry) => slugify(typeof entry === "string" ? entry : entry.name) === slug) === index;
+    });
   return {
     ...day,
     day: String(day?.day || ""),
@@ -87,6 +163,7 @@ function normalizePlace(place: PlaceDraft, fallbackKind: string) {
       cityId: "",
       kind: fallbackKind,
       name: place,
+      geo: undefined,
       desc: "",
       tip: "",
       cuisine: "",
@@ -99,6 +176,7 @@ function normalizePlace(place: PlaceDraft, fallbackKind: string) {
     cityId: String(place.cityId || ""),
     kind: String(place.kind || fallbackKind),
     name: String(place.name || place.title || ""),
+    geo: normalizeGeoPoint(place.geo),
     desc: String(place.desc || place.description || ""),
     tip: String(place.tip || ""),
     cuisine: String(place.cuisine || ""),
@@ -125,13 +203,19 @@ function buildPlaceDocuments(blog: BlogDraft, cityId: string) {
       name: normalized.name,
       kind: existing?.kind === kind ? existing.kind : (existing?.kind || kind),
       kinds: [...new Set([...(Array.isArray(existing?.kinds) ? existing.kinds : []), kind])],
+      geo: normalized.geo || existing?.geo || {},
       desc: normalized.desc || String(existing?.desc || ""),
       tip: normalized.tip || String(existing?.tip || ""),
       cuisine: normalized.cuisine || String(existing?.cuisine || ""),
       price: normalized.price || String(existing?.price || ""),
       image: normalized.image || String(existing?.image || "")
     });
-    return placeId;
+    return {
+      ...normalized,
+      id: placeId,
+      cityId,
+      kind
+    };
   };
 
   const itinerary = ensureArray<Record<string, unknown>>(blog.itinerary).map((rawDay) => {
@@ -157,6 +241,39 @@ function assertItinerarySpots(itinerary: Array<Record<string, unknown>>) {
   if (invalidDay) {
     throw new Error(`Each itinerary day must include destination spots before saving. Missing spots for "${String(invalidDay.title || invalidDay.day || "Untitled day")}".`);
   }
+}
+
+function assertCoordinateIntegrity(
+  draft: BlogDraft,
+  { requireExactPrecision = true }: { requireExactPrecision?: boolean } = {}
+) {
+  assertValidGeoPoint(draft.geo, `destination "${String(draft.city || "Untitled destination")}"`, { requireExactPrecision });
+
+  const seenByPlaceSlug = new Map<string, { label: string; lat: number; lng: number }>();
+  const registerPlace = (place: unknown, fallbackKind: string) => {
+    const normalized = normalizePlace((place || {}) as PlaceDraft, fallbackKind);
+    if (!normalized.name) return;
+
+    const label = formatCoordinateLabel(fallbackKind, normalized.name);
+    const geo = assertValidGeoPoint(normalized.geo, label, { requireExactPrecision });
+    const slug = slugify(normalized.name);
+    const previous = seenByPlaceSlug.get(slug);
+    if (
+      previous &&
+      (Math.abs(previous.lat - geo.lat) > 0.000001 || Math.abs(previous.lng - geo.lng) > 0.000001)
+    ) {
+      throw new Error(
+        `Conflicting coordinates detected for "${normalized.name}". ${previous.label} and ${label} must point to the same exact place.`
+      );
+    }
+    seenByPlaceSlug.set(slug, { label, lat: geo.lat, lng: geo.lng });
+  };
+
+  ensureArray<Record<string, unknown>>(draft.itinerary).forEach((day) => {
+    ensureArray(day?.spots).forEach((spot) => registerPlace(spot, "itinerary"));
+  });
+  ensureArray(draft.food).forEach((place) => registerPlace(place, "food"));
+  ensureArray(draft.gems).forEach((place) => registerPlace(place, "gem"));
 }
 
 function buildCityDocuments(blog: BlogDraft) {
@@ -246,23 +363,10 @@ export async function loadRecommendationsDirect() {
   });
 }
 
-export async function loadHomepageSettingsDirect() {
-  const rows = await selectRowsFresh<Record<string, any>>(
-    "site_config",
-    new URLSearchParams({
-      select: "*",
-      key: "eq.homepage"
-    })
-  );
-  const row = rows[0];
-  return {
-    filterTags: Array.isArray(row?.filter_tags) ? row.filter_tags.map((item) => slugify(item)) : []
-  };
-}
-
 export async function saveStoryDraft(draft: BlogDraft, publishedBy: string) {
   const existingSaved = await loadStoriesDirect();
   assertItinerarySpots(ensureArray<Record<string, unknown>>(draft.itinerary).map(normalizeItineraryDay));
+  assertCoordinateIntegrity(draft);
   const { cityId, cityRow, itineraryRow, placeDocs } = buildCityDocuments(draft);
   if (draft.featured && getFeaturedCount(existingSaved, cityId) >= 2) {
     throw new Error("Only 2 featured cards are allowed. Unfeature one saved card first.");
@@ -290,7 +394,20 @@ export async function saveStoryDraft(draft: BlogDraft, publishedBy: string) {
   await upsertRows(
     "places",
     placeDocs.map((place) => ({
-      ...place,
+      id: place.id,
+      city_id: place.city_id,
+      city: place.city,
+      country: place.country,
+      slug: place.slug,
+      name: place.name,
+      kind: place.kind,
+      kinds: place.kinds,
+      geo: place.geo,
+      desc: place.desc,
+      tip: place.tip,
+      cuisine: place.cuisine,
+      price: place.price,
+      image: place.image,
       created_at: draft.createdAt || now,
       updated_at: now,
       published_by: publishedBy
@@ -301,7 +418,8 @@ export async function saveStoryDraft(draft: BlogDraft, publishedBy: string) {
   const generatedRecommendations = await publishRecommendationsFromCurrentData(publishedBy);
   return {
     cityId,
-    generatedRecommendations
+    generatedRecommendations,
+    savedDraft: draft
   };
 }
 
@@ -338,20 +456,6 @@ export async function toggleHomeVisibilityState(id: string, nextVisible: boolean
     pinned: nextVisible,
     updated_at: new Date().toISOString()
   });
-}
-
-export async function updateHomepageFilterTags(filterTags: string[]) {
-  await upsertRows(
-    "site_config",
-    [
-      {
-        key: "homepage",
-        filter_tags: [...new Set(filterTags.map((item) => slugify(item)).filter(Boolean))],
-        updated_at: new Date().toISOString()
-      }
-    ],
-    "key"
-  );
 }
 
 export async function removeSavedCity(id: string, publishedBy: string) {

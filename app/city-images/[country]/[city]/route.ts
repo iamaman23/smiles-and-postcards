@@ -41,28 +41,22 @@ function getVariantQueries(city: string, country: string, variant: "card" | "her
 
   if (variant === "card") {
     return [
-      `${cityCountry} landmark`,
-      `${cityCountry} famous landmark`,
-      `${cityCountry} historic site`,
+      `${cityCountry} skyline`,
+      `${cityCountry} cityscape`,
+      `${cityCountry} aerial view`,
       `${cityCountry} old town`,
-      `${cityCountry} monument`,
-      `${cityCountry} bridge`,
-      `${cityCountry} castle`
+      `${cityCountry} riverfront`,
+      `${cityCountry} landmark district`
     ];
   }
 
   return [
-    `${cityCountry} landmark`,
-    `${cityCountry} famous landmark`,
-    `${cityCountry} historic site`,
-    `${cityCountry} monument`,
+    `${cityCountry} famous monument`,
+    `${cityCountry} iconic landmark`,
     `${cityCountry} cathedral`,
     `${cityCountry} castle`,
     `${cityCountry} palace`,
-    `${cityCountry} bridge`,
-    `${cityCountry} old town`,
-    `${cityCountry} skyline`,
-    `${cityCountry} cityscape`
+    `${cityCountry} tower`
   ];
 }
 
@@ -103,50 +97,66 @@ function getPhotoScore(photo: PexelsPhoto, city: string, country: string, varian
   return score;
 }
 
-async function searchPexels(query: string, city: string, country: string, variant: "card" | "hero") {
-  if (!PEXELS_API_KEY) return "";
+async function searchPexelsCandidates(city: string, country: string, variant: "card" | "hero") {
+  if (!PEXELS_API_KEY) return [];
 
-  const params = new URLSearchParams({
-    query,
-    per_page: "15",
-    orientation: "landscape",
-    size: "large",
-    locale: "en-US"
-  });
-
-  const response = await fetch(`https://api.pexels.com/v1/search?${params.toString()}`, {
-    headers: {
-      Authorization: PEXELS_API_KEY
-    },
-    next: {
-      revalidate: 60 * 60 * 24 * 7
-    }
-  });
-
-  if (!response.ok) return "";
-
-  const payload = (await response.json()) as PexelsSearchResponse;
-  const photos = Array.isArray(payload.photos) ? payload.photos : [];
-  if (!photos.length) return "";
-
-  const best = [...photos]
-    .map((photo) => ({ photo, score: getPhotoScore(photo, city, country, variant) }))
-    .filter((item) => item.score >= 0)
-    .sort((a, b) => b.score - a.score)[0]?.photo;
-
-  return best?.src?.large2x || best?.src?.landscape || best?.src?.large || best?.src?.original || "";
-}
-
-async function findCityImage(citySlug: string, countrySlug: string, variant: "card" | "hero") {
-  const city = unslugify(citySlug);
-  const country = unslugify(countrySlug);
+  const candidates: Array<{ imageUrl: string; score: number }> = [];
+  const seen = new Set<string>();
 
   for (const query of getVariantQueries(city, country, variant)) {
-    const imageUrl = await searchPexels(query, city, country, variant);
-    if (imageUrl) return imageUrl;
+    const params = new URLSearchParams({
+      query,
+      per_page: "15",
+      orientation: "landscape",
+      size: "large",
+      locale: "en-US"
+    });
+
+    const response = await fetch(`https://api.pexels.com/v1/search?${params.toString()}`, {
+      headers: {
+        Authorization: PEXELS_API_KEY
+      },
+      next: {
+        revalidate: 60 * 60 * 24 * 7
+      }
+    });
+
+    if (!response.ok) continue;
+
+    const payload = (await response.json()) as PexelsSearchResponse;
+    const photos = Array.isArray(payload.photos) ? payload.photos : [];
+    for (const item of photos
+      .map((photo) => ({ photo, score: getPhotoScore(photo, city, country, variant) }))
+      .filter((item) => item.score >= 0)
+      .sort((a, b) => b.score - a.score)) {
+      const imageUrl = item.photo.src?.large2x || item.photo.src?.landscape || item.photo.src?.large || item.photo.src?.original || "";
+      if (!imageUrl || seen.has(imageUrl)) continue;
+      seen.add(imageUrl);
+      candidates.push({ imageUrl, score: item.score });
+    }
   }
 
-  return "";
+  return candidates;
+}
+
+async function findCityImagePair(citySlug: string, countrySlug: string) {
+  const city = unslugify(citySlug);
+  const country = unslugify(countrySlug);
+  const [cardCandidates, heroCandidates] = await Promise.all([
+    searchPexelsCandidates(city, country, "card"),
+    searchPexelsCandidates(city, country, "hero")
+  ]);
+  const cardImage = cardCandidates[0]?.imageUrl || "";
+  const heroImage =
+    heroCandidates.find((candidate) => candidate.imageUrl !== cardImage)?.imageUrl ||
+    cardCandidates.find((candidate) => candidate.imageUrl !== cardImage)?.imageUrl ||
+    heroCandidates[0]?.imageUrl ||
+    "";
+
+  return {
+    card: cardImage,
+    hero: heroImage
+  };
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -163,7 +173,8 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  const imageUrl = await findCityImage(city, country, variant);
+  const pair = await findCityImagePair(city, country);
+  const imageUrl = variant === "hero" ? pair.hero : pair.card;
   if (imageUrl) {
     return NextResponse.redirect(imageUrl, {
       status: 307,

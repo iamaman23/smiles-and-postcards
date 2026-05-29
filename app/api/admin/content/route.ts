@@ -3,15 +3,13 @@ import { NextResponse } from "next/server";
 import { verifyFirebaseRequest } from "../../../../lib/firebase-auth-server";
 import {
   clearGeneratedContent,
-  loadHomepageSettingsDirect,
   loadRecommendationsDirect,
   loadStoriesDirect,
   publishRecommendationsFromCurrentData,
   removeSavedCity,
   saveStoryDraft,
   toggleFeaturedState,
-  toggleHomeVisibilityState,
-  updateHomepageFilterTags
+  toggleHomeVisibilityState
 } from "../../../../lib/admin-content";
 
 const TAGS_BY_SCOPE: Record<string, string[]> = {
@@ -19,7 +17,6 @@ const TAGS_BY_SCOPE: Record<string, string[]> = {
   itineraries: ["content:itineraries", "content:all"],
   places: ["content:places", "content:all"],
   recommendations: ["content:recommendations", "content:all"],
-  siteConfig: ["content:siteConfig", "content:all"]
 };
 
 function revalidateScopes(scopes: Array<keyof typeof TAGS_BY_SCOPE>) {
@@ -39,10 +36,6 @@ export async function GET(request: Request) {
     if (view === "recommendations") {
       return NextResponse.json({ items: await loadRecommendationsDirect() });
     }
-    if (view === "homepage") {
-      return NextResponse.json(await loadHomepageSettingsDirect());
-    }
-
     return NextResponse.json({ error: `Unsupported admin view "${view}".` }, { status: 400 });
   } catch (error) {
     return NextResponse.json(
@@ -77,11 +70,6 @@ export async function POST(request: Request) {
       case "toggleHomeVisibility": {
         await toggleHomeVisibilityState(String(body?.id || ""), Boolean(body?.nextVisible));
         revalidateScopes(["cities"]);
-        return NextResponse.json({ ok: true });
-      }
-      case "updateHomepageFilterTags": {
-        await updateHomepageFilterTags(Array.isArray(body?.filterTags) ? body.filterTags : []);
-        revalidateScopes(["siteConfig"]);
         return NextResponse.json({ ok: true });
       }
       case "removeSaved": {

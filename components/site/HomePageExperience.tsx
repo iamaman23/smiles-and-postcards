@@ -14,8 +14,11 @@ type AdvancedFilters = {
   continent: string;
   budgetRange: string;
   itineraryLength: string;
+  travelMonth: string;
   travelStyle: string;
 };
+
+type ScoreKey = "walkability" | "food" | "safety";
 
 const HOME_INTENT_FILTERS = [
   { label: "Any trip", tag: "all" },
@@ -29,7 +32,53 @@ const DEFAULT_ADVANCED_FILTERS: AdvancedFilters = {
   continent: "all",
   budgetRange: "all",
   itineraryLength: "all",
+  travelMonth: "all",
   travelStyle: "all"
+};
+
+const TRAVEL_MONTHS = [
+  { value: "january", label: "January" },
+  { value: "february", label: "February" },
+  { value: "march", label: "March" },
+  { value: "april", label: "April" },
+  { value: "may", label: "May" },
+  { value: "june", label: "June" },
+  { value: "july", label: "July" },
+  { value: "august", label: "August" },
+  { value: "september", label: "September" },
+  { value: "october", label: "October" },
+  { value: "november", label: "November" },
+  { value: "december", label: "December" }
+] as const;
+
+const MONTH_TO_SEASON: Record<string, string> = {
+  january: "winter",
+  february: "winter",
+  march: "spring",
+  april: "spring",
+  may: "spring",
+  june: "summer",
+  july: "summer",
+  august: "summer",
+  september: "autumn",
+  october: "autumn",
+  november: "autumn",
+  december: "winter"
+};
+
+const HOME_SCORE_COPY: Record<ScoreKey, { label: string; description: string }> = {
+  walkability: {
+    label: "Walk",
+    description: "How easy it is to explore on foot without planning your whole day around transport."
+  },
+  food: {
+    label: "Food",
+    description: "How consistently rewarding the eating scene feels, from standout meals to casual local staples."
+  },
+  safety: {
+    label: "Safe",
+    description: "How comfortable most travelers should feel with normal city awareness. A safety score of 8 means confidently manageable, not risk-free."
+  }
 };
 
 const HOME_FILTER_ALIASES: Record<string, string[]> = {
@@ -68,6 +117,25 @@ function getItineraryBucket(days: number) {
   if (days <= 3) return "short";
   if (days <= 6) return "medium";
   return "long";
+}
+
+function deriveSeasonTokens(bestSeason: unknown) {
+  const raw = String(bestSeason || "").toLowerCase();
+  const tokens = new Set(raw.split(/[^a-z]+/g).map(slugify).filter(Boolean));
+
+  Object.entries(MONTH_TO_SEASON).forEach(([month, season]) => {
+    if (raw.includes(month)) tokens.add(season);
+  });
+
+  return tokens;
+}
+
+function matchesTravelMonth(bestSeason: unknown, travelMonth: string) {
+  if (travelMonth === "all") return true;
+  const month = travelMonth.toLowerCase();
+  const season = MONTH_TO_SEASON[month];
+  const tokens = deriveSeasonTokens(bestSeason);
+  return tokens.has(month) || (season ? tokens.has(season) : false);
 }
 
 function parseBudgetValue(budget: unknown) {
@@ -129,6 +197,7 @@ function matchesAdvancedFilters(blog: TravelBlog, filters: AdvancedFilters) {
     (filters.continent === "all" || blog?.meta?.continent === filters.continent) &&
     (filters.budgetRange === "all" || budgetRange === filters.budgetRange) &&
     (filters.itineraryLength === "all" || itineraryLength === filters.itineraryLength) &&
+    matchesTravelMonth(blog.bestSeason, filters.travelMonth) &&
     (filters.travelStyle === "all" || blog.travelStyles.includes(filters.travelStyle))
   );
 }
@@ -297,26 +366,6 @@ export function HomePageExperience({ stories }: { stories: TravelBlog[] }) {
             </div>
           </div>
 
-          <div className="hero__quicklist">
-            {[
-              { city: "Kyoto", label: "Quiet Mornings" },
-              { city: "Lisbon", label: "Sunlit Cities" },
-              { city: "Bali", label: "Remote Reset" }
-            ].map((item) => (
-              <button
-                className="hero__quicklink"
-                type="button"
-                key={item.city}
-                onClick={() => {
-                  setSearchInput(item.city);
-                  const matched = visibleStories.find((story) => slugify(story.city) === slugify(item.city));
-                  if (matched) navigateToStory(matched);
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="hero__scroll">
           <span>Keep drifting</span>
@@ -361,6 +410,21 @@ export function HomePageExperience({ stories }: { stories: TravelBlog[] }) {
                     <option value="short">Quick escape, 1 to 3 days</option>
                     <option value="medium">Long weekend, 4 to 6 days</option>
                     <option value="long">Settle in, 7 days or more</option>
+                  </select>
+                </div>
+
+                <div className="home-filters__group home-filters__group--compact">
+                  <label className="home-filters__label" htmlFor="filter-travel-month">Travel month</label>
+                  <select
+                    className="home-filters__control"
+                    id="filter-travel-month"
+                    value={advancedFilters.travelMonth}
+                    onChange={(event) => setAdvancedFilters((current) => ({ ...current, travelMonth: event.target.value }))}
+                  >
+                    <option value="all">Any time of year</option>
+                    {TRAVEL_MONTHS.map((month) => (
+                      <option value={month.value} key={month.value}>{month.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -449,6 +513,21 @@ export function HomePageExperience({ stories }: { stories: TravelBlog[] }) {
               ))}
             </div>
 
+            <div className="home-score-guide" aria-label="Editorial score explanation">
+              <div className="home-score-guide__heading">
+                <strong>What the scores mean</strong>
+                <span>10-point editorial signals, meant for quick comparison rather than hard guarantees.</span>
+              </div>
+              <div className="home-score-guide__legend">
+                {(["walkability", "food", "safety"] as ScoreKey[]).map((key) => (
+                  <div className="home-score-guide__item" key={key}>
+                    <span className="home-score-guide__pill">{HOME_SCORE_COPY[key].label}</span>
+                    <p>{HOME_SCORE_COPY[key].description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="blog-grid" id="blog-grid">
             {cards.length ? cards.map(({ blog, kind }) => {
               const isFeatured = kind !== "standard";
@@ -480,7 +559,11 @@ export function HomePageExperience({ stories }: { stories: TravelBlog[] }) {
                       </span>
                     </div>
                     <div className="blog-card__meta">
-                      <strong>Walk {blog?.scores?.walkability ?? 7}</strong> | <strong>Food {blog?.scores?.food ?? 8}</strong> | <strong>Safe {blog?.scores?.safety ?? 7}</strong>
+                      {(["walkability", "food", "safety"] as ScoreKey[]).map((key) => (
+                        <span className="blog-card__score" key={`${blog.id}-${key}`} title={HOME_SCORE_COPY[key].description}>
+                          <strong>{HOME_SCORE_COPY[key].label} {blog?.scores?.[key] ?? (key === "food" ? 8 : 7)}</strong>
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </Link>

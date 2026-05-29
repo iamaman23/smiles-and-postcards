@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { BlogDay } from "../../lib/site-content";
 
 function getItineraryDayNumber(day: BlogDay, index: number) {
@@ -8,15 +7,31 @@ function getItineraryDayNumber(day: BlogDay, index: number) {
   return match ? match[0] : String(index + 1);
 }
 
+function getDisplaySpots(day: BlogDay): Array<{ key: string; label: string }> {
+  if (day.spotDetails?.length) {
+    return day.spotDetails.map((spot, index) => ({
+      key: spot.id || `${day.day}-${spot.name}-${index}`,
+      label: spot.name
+    }));
+  }
+
+  return day.spots.map((spot, index) => ({
+    key: `${day.day}-${spot}-${index}`,
+    label: spot
+  }));
+}
+
 export function ItineraryTabs({
+  activeIndex,
   itinerary,
+  onActiveIndexChange,
   storyId
 }: {
+  activeIndex: number;
   itinerary: BlogDay[];
+  onActiveIndexChange: (index: number) => void;
   storyId: string;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-
   return (
     <div className="itinerary-tabs" data-itinerary-tabs>
       <div className="itinerary-tabs__nav" role="tablist" aria-label="Itinerary Days">
@@ -33,7 +48,7 @@ export function ItineraryTabs({
               aria-selected={isActive}
               aria-label={`Show itinerary day ${dayNumber}`}
               tabIndex={isActive ? 0 : -1}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => onActiveIndexChange(index)}
               key={`${storyId}-${day.day}-${index}`}
             >
               {dayNumber}
@@ -59,10 +74,12 @@ export function ItineraryTabs({
               <h3 className="itinerary-tabs__title">{day.title}</h3>
             </div>
             <p className="itinerary-tabs__text">{day.text}</p>
-            {day.spots.length ? (
+            {getDisplaySpots(day).length ? (
               <div className="itinerary-tabs__location" aria-label="Destinations for this day">
-                {day.spots.map((spot) => (
-                  <span className="itinerary-tabs__location-pill" key={`${day.day}-location-${spot}`}>{spot}</span>
+                {getDisplaySpots(day).map((spot) => (
+                  <span className="itinerary-tabs__location-pill" key={spot.key}>
+                    {spot.label}
+                  </span>
                 ))}
               </div>
             ) : null}
