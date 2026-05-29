@@ -4,19 +4,56 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { PlaceEntity } from "../../lib/site-content";
 import { DEFAULT_MAP_VIEW, MAP_VIEWS, type MapViewId } from "../../lib/map-config";
 
+type MapVariant = "itinerary" | "food" | "gem" | "combined";
+
 type DestinationMapProps = {
-  dayLabel: string;
-  fallbackSpots: PlaceEntity[];
+  title: string;
+  eyebrow?: string;
+  metaLabel?: string;
+  emptyLabel?: string;
+  overlayLabel?: string;
+  fallbackSpots?: PlaceEntity[];
   spots: PlaceEntity[];
+  variant?: MapVariant;
+};
+
+type MarkerDefinition = {
+  icon: string;
+  label: string;
 };
 
 const DEFAULT_CENTER: [number, number] = [13.388, 52.517];
 const MAP_PADDING = 68;
-const MAX_INTERACTIVE_ZOOM = 19;
+const POPUP_VIEWPORT_PADDING = 20;
+const POPUP_MIN_HEIGHT = 160;
+const SINGLE_SPOT_ZOOM = 15;
+const FIT_BOUNDS_MAX_ZOOM = 15;
+const MAX_SOURCE_ZOOM = 19;
+const MAX_INTERACTIVE_ZOOM = Math.min(MAX_SOURCE_ZOOM - 1, 17);
+const MIN_INTERACTIVE_ZOOM = 2;
 const FALLBACK_DESCRIPTION = "A stop worth adding to the day, with the exact mood and details ready to fill in from the itinerary editor.";
+
+const MARKER_BY_VARIANT: Record<MapVariant, MarkerDefinition> = {
+  itinerary: { icon: "•", label: "Stop" },
+  food: { icon: "🍽", label: "Food" },
+  gem: { icon: "✦", label: "Detour" },
+  combined: { icon: "⌘", label: "Stop" }
+};
 
 function hasCoordinates(place: PlaceEntity) {
   return Boolean(place.geo && Number.isFinite(place.geo.lat) && Number.isFinite(place.geo.lng));
+}
+
+function getPlaceVariant(place: PlaceEntity, fallbackVariant: MapVariant): MapVariant {
+  const kind = String(place.kind || "").toLowerCase();
+  if (kind === "food") return "food";
+  if (kind === "gem") return "gem";
+  if (kind === "itinerary") return "itinerary";
+  return fallbackVariant;
+}
+
+function getMarkerDefinition(place: PlaceEntity, fallbackVariant: MapVariant) {
+  return MARKER_BY_VARIANT[getPlaceVariant(place, fallbackVariant)];
 }
 
 function getBounds(maplibre: Awaited<typeof import("maplibre-gl")>, spots: PlaceEntity[]) {
@@ -28,7 +65,7 @@ function getBounds(maplibre: Awaited<typeof import("maplibre-gl")>, spots: Place
   return bounds;
 }
 
-function buildPopupCard(spot: PlaceEntity, dayLabel: string, onClose: () => void) {
+function buildPopupCard(spot: PlaceEntity, onClose: () => void) {
   const card = document.createElement("article");
   card.className = "destination-map-card";
 
@@ -43,10 +80,6 @@ function buildPopupCard(spot: PlaceEntity, dayLabel: string, onClose: () => void
     onClose();
   });
 
-  const eyebrow = document.createElement("p");
-  eyebrow.className = "destination-map-card__eyebrow";
-  eyebrow.textContent = dayLabel;
-
   const title = document.createElement("h4");
   title.className = "destination-map-card__title";
   title.textContent = spot.name;
@@ -55,14 +88,111 @@ function buildPopupCard(spot: PlaceEntity, dayLabel: string, onClose: () => void
   description.className = "destination-map-card__description";
   description.textContent = spot.desc?.trim() || FALLBACK_DESCRIPTION;
 
-  card.append(closeButton, eyebrow, title, description);
+  card.append(closeButton, title);
+
+  if (spot.address?.trim()) {
+    const address = document.createElement("p");
+    address.className = "destination-map-card__address";
+    address.textContent = spot.address.trim();
+    card.append(address);
+  }
+
+  card.append(description);
+
+  if (spot.cuisine?.trim() || spot.price?.trim()) {
+    const meta = document.createElement("div");
+    meta.className = "destination-map-card__chips";
+
+    if (spot.cuisine?.trim()) {
+      const cuisine = document.createElement("span");
+      cuisine.className = "destination-map-card__chip";
+      cuisine.textContent = spot.cuisine.trim();
+      meta.append(cuisine);
+    }
+
+    if (spot.price?.trim()) {
+      const price = document.createElement("span");
+      price.className = "destination-map-card__chip";
+      price.textContent = spot.price.trim();
+      meta.append(price);
+    }
+
+    card.append(meta);
+  }
+
   return card;
 }
 
+function clampMapZoom(map: any) {
+  if (!map) return;
+  const zoom = map.getZoom();
+  if (!Number.isFinite(zoom)) {
+    map.setZoom(Math.min(SINGLE_SPOT_ZOOM, MAX_INTERACTIVE_ZOOM));
+    return;
+  }
+  if (zoom > MAX_INTERACTIVE_ZOOM) {
+    map.setZoom(MAX_INTERACTIVE_ZOOM);
+  }
+  if (zoom < MIN_INTERACTIVE_ZOOM) {
+    map.setZoom(MIN_INTERACTIVE_ZOOM);
+  }
+}
+
+function keepPopupInView(map: any, popup: any, lngLat: [number, number], animate = true) {
+  const container = map?.getContainer?.() as HTMLElement | null;
+  const popupElement = popup?.getElement?.() as HTMLElement | null;
+  if (!container || !popupElement) return;
+
+  const popupContent = popupElement.querySelector(".maplibregl-popup-content") as HTMLElement | null;
+  if (popupContent) {
+    const maxHeight = Math.max(container.clientHeight - POPUP_VIEWPORT_PADDING * 2, POPUP_MIN_HEIGHT);
+    popupContent.style.maxHeight = `${maxHeight}px`;
+    popupContent.style.overflowY = "auto";
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const popupRect = popupElement.getBoundingClientRect();
+  const minLeft = containerRect.left + POPUP_VIEWPORT_PADDING;
+  const maxRight = containerRect.right - POPUP_VIEWPORT_PADDING;
+  const minTop = containerRect.top + POPUP_VIEWPORT_PADDING;
+  const maxBottom = containerRect.bottom - POPUP_VIEWPORT_PADDING;
+
+  let shiftX = 0;
+  let shiftY = 0;
+
+  if (popupRect.left < minLeft) shiftX = minLeft - popupRect.left;
+  else if (popupRect.right > maxRight) shiftX = maxRight - popupRect.right;
+
+  if (popupRect.top < minTop) shiftY = minTop - popupRect.top;
+  else if (popupRect.bottom > maxBottom) shiftY = maxBottom - popupRect.bottom;
+
+  if (!shiftX && !shiftY) return;
+
+  const currentCenterPoint = map.project(map.getCenter());
+  const nextCenter = map.unproject([
+    currentCenterPoint.x - shiftX,
+    currentCenterPoint.y - shiftY
+  ]);
+
+  map.easeTo({
+    center: nextCenter,
+    duration: animate ? 300 : 0
+  });
+
+  window.requestAnimationFrame(() => {
+    popup.setLngLat(lngLat);
+  });
+}
+
 export function DestinationMap({
-  dayLabel,
-  fallbackSpots,
-  spots
+  title,
+  eyebrow = "Map",
+  metaLabel,
+  emptyLabel,
+  overlayLabel,
+  fallbackSpots = [],
+  spots,
+  variant = "itinerary"
 }: DestinationMapProps) {
   const mapId = useId();
   const mapNodeRef = useRef<HTMLDivElement | null>(null);
@@ -71,17 +201,30 @@ export function DestinationMap({
   const markerRefs = useRef<Array<{ element: HTMLButtonElement; marker: any; name: string }>>([]);
   const popupRef = useRef<any>(null);
   const readyRef = useRef(false);
+  const activeSpotNameRef = useRef<string | null>(null);
+  const visibleSpotsRef = useRef<PlaceEntity[]>([]);
   const [isMapReady, setIsMapReady] = useState(false);
   const [activeSpotName, setActiveSpotName] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<MapViewId>(DEFAULT_MAP_VIEW);
 
-  const initialSpots = useMemo(() => (spots.length ? spots : fallbackSpots).filter(hasCoordinates), [fallbackSpots, spots]);
+  const initialSpots = useMemo(
+    () => (spots.length ? spots : fallbackSpots).filter(hasCoordinates),
+    [fallbackSpots, spots]
+  );
   const visibleSpots = useMemo(() => spots.filter(hasCoordinates), [spots]);
   const hasAnyMappedSpots = initialSpots.length > 0;
   const hasVisibleSpots = visibleSpots.length > 0;
 
   useEffect(() => {
     setActiveSpotName(null);
+  }, [visibleSpots]);
+
+  useEffect(() => {
+    activeSpotNameRef.current = activeSpotName;
+  }, [activeSpotName]);
+
+  useEffect(() => {
+    visibleSpotsRef.current = visibleSpots;
   }, [visibleSpots]);
 
   useEffect(() => {
@@ -95,7 +238,7 @@ export function DestinationMap({
       maplibreRef.current = maplibre;
 
       const firstSpot = initialSpots[0];
-      const center = firstSpot?.geo ? [firstSpot.geo.lng, firstSpot.geo.lat] as [number, number] : DEFAULT_CENTER;
+      const center = firstSpot?.geo ? ([firstSpot.geo.lng, firstSpot.geo.lat] as [number, number]) : DEFAULT_CENTER;
 
       const map = new maplibre.Map({
         attributionControl: {},
@@ -103,6 +246,7 @@ export function DestinationMap({
         container: mapNodeRef.current,
         dragRotate: false,
         maxZoom: MAX_INTERACTIVE_ZOOM,
+        minZoom: MIN_INTERACTIVE_ZOOM,
         pitchWithRotate: false,
         scrollZoom: true,
         style: MAP_VIEWS[activeView].style,
@@ -112,6 +256,7 @@ export function DestinationMap({
 
       mapRef.current = map;
       popupRef.current = new maplibre.Popup({
+        anchor: "bottom",
         closeButton: false,
         closeOnClick: false,
         maxWidth: "290px",
@@ -124,12 +269,30 @@ export function DestinationMap({
       map.on("click", () => {
         setActiveSpotName(null);
       });
+      map.on("zoomend", () => {
+        clampMapZoom(map);
+      });
+      map.on("moveend", () => {
+        clampMapZoom(map);
+      });
+      map.on("styleimagemissing", () => {
+        clampMapZoom(map);
+      });
       popupRef.current.on("close", () => {
         setActiveSpotName(null);
+      });
+      popupRef.current.on("open", () => {
+        const currentPopup = popupRef.current;
+        const currentSpot = visibleSpotsRef.current.find((spot) => spot.name === activeSpotNameRef.current);
+        if (!currentPopup || !currentSpot?.geo) return;
+        window.requestAnimationFrame(() => {
+          keepPopupInView(map, currentPopup, [currentSpot.geo!.lng, currentSpot.geo!.lat]);
+        });
       });
 
       map.once("load", () => {
         if (disposed) return;
+        clampMapZoom(map);
         map.resize();
         readyRef.current = true;
         setIsMapReady(true);
@@ -149,15 +312,19 @@ export function DestinationMap({
       mapRef.current = null;
       maplibreRef.current = null;
     };
-  }, [activeView, hasAnyMappedSpots]);
+  }, [hasAnyMappedSpots]);
 
   useEffect(() => {
     if (!mapRef.current || !readyRef.current) return;
-    mapRef.current.setMaxZoom(MAX_INTERACTIVE_ZOOM);
-    mapRef.current.setStyle(MAP_VIEWS[activeView].style);
-    mapRef.current.once("styledata", () => {
-      mapRef.current?.setMaxZoom(MAX_INTERACTIVE_ZOOM);
-      mapRef.current?.resize();
+    const map = mapRef.current;
+    map.setMaxZoom(MAX_INTERACTIVE_ZOOM);
+    map.setMinZoom(MIN_INTERACTIVE_ZOOM);
+    map.setStyle(MAP_VIEWS[activeView].style);
+    map.once("styledata", () => {
+      map.setMaxZoom(MAX_INTERACTIVE_ZOOM);
+      map.setMinZoom(MIN_INTERACTIVE_ZOOM);
+      clampMapZoom(map);
+      map.resize();
     });
   }, [activeView]);
 
@@ -173,19 +340,20 @@ export function DestinationMap({
     visibleSpots.forEach((spot, index) => {
       if (!spot.geo) return;
 
+      const markerMeta = getMarkerDefinition(spot, variant);
       const element = document.createElement("button");
       element.type = "button";
-      element.className = "destination-map__marker";
+      element.className = `destination-map__marker destination-map__marker--${getPlaceVariant(spot, variant)}`;
       element.setAttribute("aria-label", `Show ${spot.name} on the map`);
       element.innerHTML = `
-        <span class="destination-map__marker-core"></span>
+        <span class="destination-map__marker-core">
+          <span class="destination-map__marker-icon">${markerMeta.icon}</span>
+        </span>
         <span class="destination-map__marker-index">${String(index + 1).padStart(2, "0")}</span>
       `;
       const markerInstance = new maplibre.Marker({ element, anchor: "bottom" });
 
-      markerInstance
-        .setLngLat([spot.geo.lng, spot.geo.lat])
-        .addTo(map);
+      markerInstance.setLngLat([spot.geo.lng, spot.geo.lat]).addTo(map);
 
       element.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -205,23 +373,37 @@ export function DestinationMap({
       map.fitBounds(getBounds(maplibre, visibleSpots), {
         animate: true,
         duration: 800,
-        maxZoom: 14,
+        maxZoom: FIT_BOUNDS_MAX_ZOOM,
         padding: MAP_PADDING
       });
     } else if (visibleSpots[0]?.geo) {
       map.easeTo({
         center: [visibleSpots[0].geo.lng, visibleSpots[0].geo.lat],
         duration: 800,
-        zoom: 13
+        zoom: SINGLE_SPOT_ZOOM
       });
     }
-  }, [isMapReady, visibleSpots]);
+
+    window.setTimeout(() => clampMapZoom(map), 0);
+  }, [isMapReady, variant, visibleSpots]);
 
   useEffect(() => {
     if (!mapRef.current || !isMapReady) return;
 
     const handleResize = () => {
       mapRef.current?.resize();
+      clampMapZoom(mapRef.current);
+      const activeSpot = visibleSpots.find((spot) => spot.name === activeSpotName);
+      if (activeSpot?.geo && popupRef.current?.isOpen?.()) {
+        window.requestAnimationFrame(() => {
+          keepPopupInView(
+            mapRef.current,
+            popupRef.current,
+            [activeSpot.geo!.lng, activeSpot.geo!.lat],
+            false
+          );
+        });
+      }
     };
 
     window.addEventListener("resize", handleResize);
@@ -231,7 +413,7 @@ export function DestinationMap({
       window.removeEventListener("resize", handleResize);
       window.cancelAnimationFrame(frame);
     };
-  }, [isMapReady]);
+  }, [activeSpotName, isMapReady, visibleSpots]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -252,28 +434,28 @@ export function DestinationMap({
 
     popupRef.current
       ?.setLngLat([activeSpot.geo.lng, activeSpot.geo.lat])
-      .setDOMContent(buildPopupCard(activeSpot, dayLabel, () => setActiveSpotName(null)))
+      .setDOMContent(buildPopupCard(activeSpot, () => setActiveSpotName(null)))
       .addTo(mapRef.current);
-  }, [activeSpotName, dayLabel, visibleSpots]);
+  }, [activeSpotName, isMapReady, visibleSpots]);
 
   if (!hasAnyMappedSpots) {
     return (
       <div className="destination-map destination-map--empty" aria-live="polite">
         <div className="destination-map__empty">
-          <p className="destination-map__eyebrow">Itinerary map</p>
-          <h3>Mapped stops coming soon</h3>
-          <p>This destination already supports itinerary tabs. The interactive map will appear as soon as stop coordinates are added.</p>
+          <p className="destination-map__eyebrow">{eyebrow}</p>
+          <h3>{emptyLabel || "Mapped spots coming soon"}</h3>
+          <p>This section will appear as soon as coordinates are added for these places.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="destination-map">
+    <div className={`destination-map destination-map--${variant}`}>
       <div className="destination-map__header">
         <div>
-          <p className="destination-map__eyebrow">Itinerary map</p>
-          <h3 className="destination-map__title">{dayLabel}</h3>
+          <p className="destination-map__eyebrow">{eyebrow}</p>
+          <h3 className="destination-map__title">{title}</h3>
         </div>
         <div className="destination-map__header-meta">
           <div className="destination-map__view-toggle" role="tablist" aria-label="Map view">
@@ -294,19 +476,22 @@ export function DestinationMap({
               );
             })}
           </div>
-          <p className="destination-map__meta">
-            {hasVisibleSpots ? `${visibleSpots.length} mapped stop${visibleSpots.length === 1 ? "" : "s"}` : "No mapped stops for this day"}
-          </p>
+          {metaLabel ? <p className="destination-map__meta">{metaLabel}</p> : null}
         </div>
       </div>
       <div className="destination-map__frame">
         <div ref={mapNodeRef} id={mapId} className="destination-map__canvas" />
         {!hasVisibleSpots ? (
           <div className="destination-map__overlay" aria-live="polite">
-            <p>This day has no mapped coordinates yet. Choose another day or add coordinates in the admin.</p>
+            <p>{overlayLabel || "These places do not have map coordinates yet."}</p>
           </div>
         ) : null}
       </div>
+      <p className="destination-map__hint">
+        {variant === "combined"
+          ? "Food, detours, and itinerary stops share the same view. Each pin style marks a different type."
+          : "Pins use section-specific styling so the map reads quickly at a glance."}
+      </p>
     </div>
   );
 }

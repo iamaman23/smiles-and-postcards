@@ -48,9 +48,11 @@ export function ItineraryExperience({
         />
       </div>
       <DestinationMap
-        dayLabel={`Day ${getDayNumber(activeDay, activeIndex)}`}
+        eyebrow="Itinerary map"
         fallbackSpots={fallbackSpots}
         spots={visibleSpots}
+        title={`Day ${getDayNumber(activeDay, activeIndex)}`}
+        variant="itinerary"
       />
     </div>
   );
