@@ -52,6 +52,7 @@ create table if not exists public.places (
   name text not null default '',
   kind text not null default '',
   kinds jsonb not null default '[]'::jsonb,
+  geo jsonb not null default '{}'::jsonb,
   "desc" text not null default '',
   tip text not null default '',
   cuisine text not null default '',

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { buildCityImageRoute, isGenericCityFallbackImage } from "./city-image-routes";
 import { RECOMMENDATION_INTENTS, type RecommendationIntent } from "./recommendation-intents";
-import { selectRows } from "./supabase-rest";
+import { hasSupabaseReadEnv, selectRows } from "./supabase-rest";
 
 export type ContentPrimitive =
   | string
@@ -23,8 +23,13 @@ export type PlaceEntity = {
   cityId: string;
   kind: string;
   name: string;
+  geo?: {
+    lat: number;
+    lng: number;
+  };
   desc: string;
   tip: string;
+  address: string;
   cuisine: string;
   price: string;
   image: string;
@@ -256,7 +261,10 @@ function normalizeSupabaseDocument(row: Record<string, any>): ContentDocument {
 }
 
 async function fetchCollection(collection: string) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (!hasSupabaseReadEnv()) {
+    console.warn(
+      `Skipping Supabase table "${collection}" because read env is incomplete. Set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL, plus SUPABASE_SERVICE_ROLE_KEY or an anon key.`
+    );
     return [] as ContentDocument[];
   }
 
@@ -267,7 +275,7 @@ async function fetchCollection(collection: string) {
     ]);
     return rows.map(normalizeSupabaseDocument);
   } catch (error) {
-    console.warn(`Unable to load Supabase table "${collection}".`, error);
+    console.warn(`Unable to load Supabase table "${collection}" from Supabase.`, error);
     return [] as ContentDocument[];
   }
 }
@@ -282,12 +290,20 @@ function mergePlaceEntities(primary: PlaceEntity | null, fallback: PlaceEntity |
     cityId: primary.cityId || fallback.cityId,
     kind: primary.kind || fallback.kind,
     name: primary.name || fallback.name,
+    geo: primary.geo || fallback.geo,
     desc: primary.desc || fallback.desc,
     tip: primary.tip || fallback.tip,
     cuisine: primary.cuisine || fallback.cuisine,
     price: primary.price || fallback.price,
     image: primary.image || fallback.image
   };
+}
+
+function normalizeGeoPoint(value: unknown) {
+  const lat = Number((value as Record<string, unknown> | null)?.lat);
+  const lng = Number((value as Record<string, unknown> | null)?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return { lat, lng };
 }
 
 function getPlaceAliasKeys(place: ContentDocument, normalized: PlaceEntity | null) {
@@ -309,9 +325,11 @@ function chooseRicherPlaceEntity(current: PlaceEntity | null, incoming: PlaceEnt
 
 function fillPlaceEntityDefaults(place: PlaceEntity | null, fallbackKind: string) {
   if (!place) return null;
+  const geo = normalizeGeoPoint(place.geo);
   return {
     ...place,
     kind: place.kind || fallbackKind,
+    ...(geo ? { geo } : {}),
     desc: place.desc || "",
     tip: place.tip || "",
     cuisine: place.cuisine || "",
@@ -522,8 +540,10 @@ function normalizePlaceEntity(place: any, fallbackKind = "place"): PlaceEntity |
       cityId: "",
       kind: fallbackKind,
       name: place,
+      geo: undefined,
       desc: "",
       tip: "",
+      address: "",
       cuisine: "",
       price: "",
       image: ""
@@ -535,8 +555,10 @@ function normalizePlaceEntity(place: any, fallbackKind = "place"): PlaceEntity |
     cityId: String(place.cityId || ""),
     kind: String(place.kind || fallbackKind),
     name: String(place.name || place.title || place.label || ""),
+    geo: normalizeGeoPoint(place.geo),
     desc: String(place.desc || place.description || place.text || ""),
     tip: String(place.tip || ""),
+    address: String(place.address || ""),
     cuisine: String(place.cuisine || ""),
     price: String(place.price || ""),
     image: String(place.image || "")
@@ -587,8 +609,10 @@ function buildFallbackPlaceFromRef(ref: string, fallbackKind: string) {
     cityId: extractPlaceCityId(ref),
     kind: fallbackKind,
     name,
+    geo: undefined,
     desc: "",
     tip: "",
+    address: "",
     cuisine: "",
     price: "",
     image: ""
@@ -634,7 +658,23 @@ function resolvePlaceRefs(refs: unknown, placesById: Map<string, PlaceEntity | n
           return buildFallbackPlaceFromRef(ref, fallbackKind);
         }
       }
-      return fillPlaceEntityDefaults(normalizePlaceEntity(ref, fallbackKind), fallbackKind);
+
+      const normalized = normalizePlaceEntity(ref, fallbackKind);
+      const matched = getPlaceLookupKeys(normalized?.id || normalized?.name)
+        .map((key) => placesById.get(key))
+        .find(Boolean);
+      const merged = fillPlaceEntityDefaults(chooseRicherPlaceEntity(matched || null, normalized), fallbackKind);
+
+      if (normalized?.geo) {
+        const base = merged || normalized;
+        if (!base) return null;
+        return fillPlaceEntityDefaults({
+          ...base,
+          geo: normalized.geo
+        }, fallbackKind);
+      }
+
+      return merged;
     })
     .filter((place): place is PlaceEntity => Boolean(place?.name));
 }

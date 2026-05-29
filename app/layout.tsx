@@ -6,6 +6,7 @@ import { CookieBanner } from "../components/site/CookieBanner";
 import { SiteChromeEffects } from "../components/site/SiteChromeEffects";
 import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME } from "../lib/site-config";
 import "./globals.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(absoluteUrl("/")),

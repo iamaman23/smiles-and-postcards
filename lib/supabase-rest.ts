@@ -12,27 +12,40 @@ type SupabaseFetchOptions = {
   prefer?: string;
 };
 
+function readEnv(...keys: string[]) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 function getSupabaseUrl() {
-  const value = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  if (!value) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
+  const value = readEnv("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
+  if (!value) throw new Error("Missing Supabase URL. Set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL.");
   return value.replace(/\/+$/, "");
 }
 
 function getSupabaseAnonKey() {
-  const value = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-  if (!value) throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  const value = readEnv("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  if (!value) throw new Error("Missing Supabase anon key. Set SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   return value;
 }
 
 function getSupabaseServiceRoleKey() {
-  const value = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const value = readEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!value) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
   return value;
 }
 
 function getSupabaseApiKey(mode: FetchMode) {
   if (mode === "write") return getSupabaseServiceRoleKey();
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || getSupabaseAnonKey();
+  return readEnv("SUPABASE_SERVICE_ROLE_KEY") || getSupabaseAnonKey();
+}
+
+export function hasSupabaseReadEnv() {
+  return Boolean(readEnv("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")) &&
+    Boolean(readEnv("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"));
 }
 
 async function parseResponse(response: Response) {

@@ -1,16 +1,65 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { ItineraryTabs } from "./ItineraryTabs";
+import { ItineraryExperience } from "./ItineraryExperience";
 import { SiteFooter } from "./SiteFooter";
 import {
   getBreakdownScores,
   getBudgetTier,
   getSnapshotSummary,
+  type PlaceEntity,
   type TravelBlog
 } from "../../lib/site-content";
 
+const FOOD_VENUE_PATTERNS = [
+  /\b(?:at|from|inside)\s+([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,5})/,
+  /\b(?:head to|go to|stop by|eat at|book a table at|try)\s+([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,5})/i
+];
+
+const FOOD_DISH_HINTS = /\b(thali|curry|biryani|dumpling|noodle|ramen|soup|sandwich|bratwurst|schnitzel|knipp|taco|pizza|pasta|cake|donut|doughnut|pastry|kebab|falafel|gelato|coffee|tea)\b/i;
+const FOOD_PLACE_HINTS = /\b(cafe|café|restaurant|bistro|bar|pub|bakery|brasserie|canteen|diner|dhaba|eatery|food stall|stall|tea house|coffee house|roastery|kitchen|tavern|market|hall|pizzeria|grill|izakaya)\b/i;
+
+function cleanVenueCandidate(value: string) {
+  return value
+    .replace(/[.,;:!?]+$/, "")
+    .replace(/\s+(for|with|serving|known|famous|near|inside)$/i, "")
+    .trim();
+}
+
+function extractVenueName(description: string) {
+  for (const pattern of FOOD_VENUE_PATTERNS) {
+    const match = description.match(pattern);
+    if (match?.[1]) return cleanVenueCandidate(match[1]);
+  }
+  return "";
+}
+
+function getFoodCardHeading(place: PlaceEntity) {
+  const venueFromDescription = extractVenueName(place.desc || "");
+  const name = (place.name || "").trim();
+  const nameLooksLikeVenue = FOOD_PLACE_HINTS.test(name);
+  const nameLooksLikeDish = FOOD_DISH_HINTS.test(name) && !nameLooksLikeVenue;
+  return nameLooksLikeDish && venueFromDescription ? venueFromDescription : name;
+}
+
+function getFoodCardSubheading(place: PlaceEntity) {
+  const cuisine = (place.cuisine || "").trim();
+  if (cuisine) return cuisine;
+  if (place.desc) return "Local food spot";
+  return "";
+}
+
 export function StoryPage({ story }: { story: TravelBlog }) {
   const hasNotes = Boolean(story.warnings?.length || story.skipIf?.length);
+  const breakdownScores = getBreakdownScores(story);
+  const walkabilityScore = breakdownScores.find(([label]) => label === "Walkability")?.[1] ?? 7;
+  const guideLinks = [
+    story.itinerary?.length ? { href: "#section-itinerary", label: "Itinerary" } : null,
+    story.food?.length ? { href: "#section-food", label: "Best Food Spots" } : null,
+    story.gems?.length ? { href: "#section-gems", label: "Worth a Detour" } : null,
+    story.highlights?.length ? { href: "#section-highlights", label: "Highlights" } : null,
+    story.budgetBreakdown?.length ? { href: "#section-budget", label: "Budget Breakdown" } : null,
+    hasNotes ? { href: "#section-notes", label: "Warnings and Skip If" } : null
+  ].filter((item): item is { href: string; label: string } => Boolean(item));
 
   return (
     <main>
@@ -62,7 +111,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
               <div className="stat__label">Best Month</div>
             </div>
             <div className="stat">
-              <div className="stat__value">{story.stats.walkScore}</div>
+              <div className="stat__value">{walkabilityScore}/10</div>
               <div className="stat__label">Walkability</div>
             </div>
           </div>
@@ -71,30 +120,6 @@ export function StoryPage({ story }: { story: TravelBlog }) {
 
       <div className="blog-content">
         <div className="blog-main">
-          <section className="content-section mobile-guide">
-            <div className="content-section__header">
-              <div className="content-section__icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M4 6h16" />
-                  <path d="M4 12h16" />
-                  <path d="M4 18h10" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="content-section__title">In This Guide</h2>
-                <p className="content-section__subtitle">Jump straight to the section you need.</p>
-              </div>
-            </div>
-            <div className="mobile-guide__list">
-              {story.itinerary?.length ? <a className="mobile-guide__item" href="#section-itinerary">Itinerary</a> : null}
-              {story.food?.length ? <a className="mobile-guide__item" href="#section-food">Food Spots</a> : null}
-              {story.gems?.length ? <a className="mobile-guide__item" href="#section-gems">Hidden Gems</a> : null}
-              {story.highlights?.length ? <a className="mobile-guide__item" href="#section-highlights">Highlights</a> : null}
-              {story.budgetBreakdown?.length ? <a className="mobile-guide__item" href="#section-budget">Budget Breakdown</a> : null}
-              {hasNotes ? <a className="mobile-guide__item" href="#section-notes">Warnings</a> : null}
-            </div>
-          </section>
-
           {story.itinerary?.length ? (
             <section className="content-section reveal" id="section-itinerary">
               <div className="content-section__header">
@@ -109,7 +134,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   <p className="content-section__subtitle">{story.days} days of carefully planned wandering</p>
                 </div>
               </div>
-              <ItineraryTabs itinerary={story.itinerary} storyId={story.id} />
+              <ItineraryExperience itinerary={story.itinerary} storyId={story.id} />
             </section>
           ) : null}
 
@@ -127,7 +152,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                 </div>
                 <div>
                   <h2 className="content-section__title">Best Food Spots</h2>
-                  <p className="content-section__subtitle">Where we actually ate (and went back twice)</p>
+                  <p className="content-section__subtitle">Places that felt reliably worth your time, from one memorable meal to a repeat stop</p>
                 </div>
               </div>
               <div className="food-grid">
@@ -135,8 +160,8 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   <div className="food-card" key={`${place.name}-${index}`}>
                     <span className="food-card__index">{String(index + 1).padStart(2, "0")}</span>
                     <div className="food-card__body">
-                      <h3 className="food-card__name">{place.name}</h3>
-                      {place.cuisine ? <span className="food-card__cuisine">{place.cuisine}</span> : null}
+                      <h3 className="food-card__name">{getFoodCardHeading(place)}</h3>
+                      {getFoodCardSubheading(place) ? <span className="food-card__cuisine">{getFoodCardSubheading(place)}</span> : null}
                       {place.desc ? <p className="food-card__desc">{place.desc}</p> : null}
                       {place.price ? <span className="food-card__price">{place.price}</span> : null}
                     </div>
@@ -155,8 +180,8 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="content-section__title">Hidden Gems</h2>
-                  <p className="content-section__subtitle">The stuff guidebooks don&apos;t tell you</p>
+                  <h2 className="content-section__title">Worth a Detour</h2>
+                  <p className="content-section__subtitle">Stops we&apos;d still make room for, even on a tighter trip</p>
                 </div>
               </div>
               <div className="gems-list">
@@ -294,22 +319,44 @@ export function StoryPage({ story }: { story: TravelBlog }) {
         </div>
 
         <aside className="blog-sidebar">
-          {story.itinerary?.length ? (
-            <div className="sidebar-card">
+          {guideLinks.length ? (
+            <div className="sidebar-card sidebar-card--toc">
               <h4 className="sidebar-card__title">In This Guide</h4>
               <ul className="toc-list">
-                {story.itinerary?.length ? <li><a href="#section-itinerary">Itinerary</a></li> : null}
-                {story.food?.length ? <li><a href="#section-food">Best Food Spots</a></li> : null}
-                {story.gems?.length ? <li><a href="#section-gems">Hidden Gems</a></li> : null}
-                {story.highlights?.length ? <li><a href="#section-highlights">Highlights</a></li> : null}
-                {story.budgetBreakdown?.length ? <li><a href="#section-budget">Budget Breakdown</a></li> : null}
-                {hasNotes ? <li><a href="#section-notes">Warnings and Skip If</a></li> : null}
+                {guideLinks.map((item) => (
+                  <li key={item.href}>
+                    <a href={item.href}>{item.label}</a>
+                  </li>
+                ))}
               </ul>
             </div>
           ) : null}
 
-          <div className="sidebar-card">
-            <h4 className="sidebar-card__title">City Snapshot</h4>
+          <div className="sidebar-card sidebar-card--snapshot">
+            <div className="sidebar-card__title-wrap">
+              <h4 className="sidebar-card__title">City Snapshot</h4>
+              <div className="score-guide">
+                <button
+                  className="score-guide__trigger"
+                  type="button"
+                  aria-label="How city scores are calculated"
+                >
+                  i
+                </button>
+                <div className="score-guide__panel" role="tooltip">
+                  <strong>How to read these scores</strong>
+                  <p>These are editorial 10-point signals, not hard data guarantees. They blend on-the-ground feel, traveler practicality, and how consistently the destination delivers.</p>
+                  <ul className="score-guide__list">
+                    <li><strong>Walkability:</strong> How easy it is to cover the city on foot, with useful transit as backup.</li>
+                    <li><strong>Food:</strong> Variety, quality, and how reliably memorable the eating scene feels.</li>
+                    <li><strong>Safety:</strong> How comfortable most travelers should feel using normal city awareness.</li>
+                    <li><strong>Affordability:</strong> How far a typical daily budget tends to stretch.</li>
+                    <li><strong>Culture:</strong> Strength of museums, architecture, history, and local character.</li>
+                    <li><strong>Nightlife:</strong> Energy after dark, from late dinners to bars and social scenes.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
             <div className="snapshot-summary">
               {getSnapshotSummary(story).map((item) => (
                 <span className="snapshot-pill" key={item.label}>
@@ -318,11 +365,11 @@ export function StoryPage({ story }: { story: TravelBlog }) {
               ))}
             </div>
             <div className="score-breakdown">
-              {getBreakdownScores(story).map(([label, score]) => (
+              {breakdownScores.map(([label, score]) => (
                 <div className="score-bar__row" key={label}>
                   <div className="score-bar__top">
                     <span className="score-bar__label">{label}</span>
-                    <span className="score-bar__value">{score}</span>
+                    <span className="score-bar__value">{score}/10</span>
                   </div>
                   <div className="score-bar__track">
                     <div
@@ -335,7 +382,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
             </div>
           </div>
 
-          <div className="sidebar-card">
+          <div className="sidebar-card sidebar-card--tags">
             <h4 className="sidebar-card__title">Tags</h4>
             <div className="sidebar-tags">
               {story.tags.map((tag) => (

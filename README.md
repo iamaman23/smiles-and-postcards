@@ -37,14 +37,29 @@ The site can derive its canonical base URL from Vercel automatically. If needed,
 
 - `NEXT_PUBLIC_SITE_URL`
 - `SITE_URL`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `PEXELS_API_KEY` or `PEXELS_API_KEY_CITY_IMAGES` for server-side city image search
+
+Admin-only API keys are pasted into the admin panel and stored in the browser session:
+
+- Gemini API key for content generation
+- Google Places API key for destination/place geocoding during generation
+- Pexels API key for resolving separate card and hero imagery during generation
 
 ## City Images
 
 - Dynamic city images are resolved through `/city-images/[country]/[city]`
 - The image resolver uses the Pexels Photo Search API with a server-side API key
-- `variant=card` prefers wider city snapshots such as skylines or cityscapes
-- `variant=hero` prefers famous landmarks, monuments, cathedrals, bridges, or old-town imagery
+- `variant=card` prefers wider destination context such as skylines, cityscapes, aerials, and old-town scenes
+- `variant=hero` prefers iconic monuments and landmark close-ups
+- The resolver now tries to avoid returning the same image for both variants
+
+## Generation Flow
+
+1. The admin panel asks the model for editorial destination JSON with real place names only.
+2. The admin panel geocodes the destination and every generated place through Google Places.
+3. If Google Places cannot confidently verify a place, that place is removed from the generated itinerary/food/gems before publish.
+4. Verified coordinates are injected into the final JSON before publish.
+5. Publish validates the coordinates and writes cities, itineraries, places, and recommendations into Supabase.

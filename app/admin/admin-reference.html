@@ -618,6 +618,10 @@ body:not(.is-admin) .admin-lock {
           <input id="pexelsApiKey" type="password" placeholder="Used to save real city and landmark image URLs during generation">
         </div>
         <div class="field field--full">
+          <label for="googlePlacesApiKey">Google Places API key</label>
+          <input id="googlePlacesApiKey" type="password" placeholder="Used to verify place names and inject real coordinates during generation">
+        </div>
+        <div class="field field--full">
           <label for="cardImageUrl">Card image URL</label>
           <input id="cardImageUrl" placeholder="Recommended: landscape 1600x1200 or larger">
         </div>
@@ -634,11 +638,6 @@ body:not(.is-admin) .admin-lock {
           Display this card on the home page
         </label>
       </div>
-
-      <div style="height:1.5rem;"></div>
-      <h2>Home Page Filters</h2>
-      <p class="hint">Select which tags appear in the home page filter bar.</p>
-      <div class="saved-list" id="homeTagSettings"></div>
 
       <div style="height:1.5rem;"></div>
       <h2>Prompts</h2>
@@ -686,6 +685,37 @@ body:not(.is-admin) .admin-lock {
         <div class="status" id="recommendationDebugStatus"></div>
         <div id="recommendationDebugOutput"></div>
       </div>
+      <div class="debug-panel" style="margin-top:1rem;">
+        <h3>Google Places Debugger</h3>
+        <p class="hint">Test a single generated place against Google Places and inspect the exact queries, returned candidates, scores, and failure reason.</p>
+        <div class="form-grid" style="margin-top:0.75rem;">
+          <div class="field">
+            <label for="geoDebugPlaceName">Place name</label>
+            <input id="geoDebugPlaceName" placeholder="Anokhi Museum of Hand Printing">
+          </div>
+          <div class="field">
+            <label for="geoDebugPlaceCity">Place city</label>
+            <input id="geoDebugPlaceCity" placeholder="Jaipur">
+          </div>
+          <div class="field">
+            <label for="geoDebugPlaceCountry">Place country</label>
+            <input id="geoDebugPlaceCountry" placeholder="India">
+          </div>
+          <div class="field">
+            <label for="geoDebugDestinationCity">Destination city</label>
+            <input id="geoDebugDestinationCity" placeholder="Jaipur">
+          </div>
+          <div class="field">
+            <label for="geoDebugDestinationCountry">Destination country</label>
+            <input id="geoDebugDestinationCountry" placeholder="India">
+          </div>
+        </div>
+        <div class="actions-row">
+          <button class="btn" id="runGeoapifyDebugBtn" type="button">Run Google Places debug</button>
+        </div>
+        <div class="status" id="geoapifyDebugStatus"></div>
+        <div id="geoapifyDebugOutput"></div>
+      </div>
     </section>
 
     <aside>
@@ -709,6 +739,9 @@ body:not(.is-admin) .admin-lock {
 <script>
 const GENERATED_BLOGS_KEY = 'smilesandpostcards.generatedBlogs.v1';
 const PEXELS_API_KEY_STORAGE = 'smilesandpostcards.pexelsApiKey.v1';
+const GOOGLE_PLACES_API_KEY_STORAGE = 'smilesandpostcards.googlePlacesApiKey.v1';
+const GOOGLE_DESTINATION_SCORE_THRESHOLD = 70;
+const GOOGLE_PLACE_SCORE_THRESHOLD = 65;
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyA0kSb-V1yZuq_j4gUCUC43GD-UK1Wzfh0",
   authDomain: "travelwebsite-d2716.firebaseapp.com",
@@ -723,6 +756,7 @@ let FIREBASE_AUTH = null;
 let currentAdmin = null;
 let RECOMMENDATION_DEBUG_BLOGS = [];
 let ANALYTICS_BINDINGS_READY = false;
+const MIN_COORDINATE_DECIMALS = 6;
 const SITE_REVALIDATION_FALLBACK_MINUTES = 60;
 const IMAGE_FALLBACKS = {
   card: [
@@ -789,7 +823,6 @@ function getCurrentPageAnalyticsContext() {
     page_path: pagePath
   };
 }
-const DEFAULT_HOME_FILTER_TAGS = ['europe', 'asia', 'food', 'budget', 'culture'];
 const CONTINENT_TAGS = ['africa', 'antarctica', 'asia', 'europe', 'north-america', 'south-america', 'oceania'];
 const CONTINENT_ALIASES = {
   africa: 'africa',
@@ -853,7 +886,6 @@ const COUNTRY_TO_CONTINENT = {
   australia: 'oceania',
   'new-zealand': 'oceania'
 };
-let HOME_FILTER_TAGS = [...DEFAULT_HOME_FILTER_TAGS];
 const DEFAULT_RECOMMENDATION_LIMIT = 8;
 
 function getRecommendationIntents() {
@@ -963,6 +995,10 @@ function getPexelsApiKey() {
   return document.getElementById('pexelsApiKey').value.trim();
 }
 
+function getGooglePlacesApiKey() {
+  return document.getElementById('googlePlacesApiKey').value.trim();
+}
+
 function persistPexelsApiKey() {
   try {
     const key = getPexelsApiKey();
@@ -976,6 +1012,19 @@ function persistPexelsApiKey() {
   }
 }
 
+function persistGooglePlacesApiKey() {
+  try {
+    const key = getGooglePlacesApiKey();
+    if (key) {
+      sessionStorage.setItem(GOOGLE_PLACES_API_KEY_STORAGE, key);
+    } else {
+      sessionStorage.removeItem(GOOGLE_PLACES_API_KEY_STORAGE);
+    }
+  } catch (error) {
+    console.info('Unable to persist Google Places API key in session storage.', error);
+  }
+}
+
 function hydratePexelsApiKey() {
   try {
     const savedKey = sessionStorage.getItem(PEXELS_API_KEY_STORAGE) || '';
@@ -983,6 +1032,16 @@ function hydratePexelsApiKey() {
     if (input && savedKey) input.value = savedKey;
   } catch (error) {
     console.info('Unable to hydrate Pexels API key from session storage.', error);
+  }
+}
+
+function hydrateGooglePlacesApiKey() {
+  try {
+    const savedKey = sessionStorage.getItem(GOOGLE_PLACES_API_KEY_STORAGE) || '';
+    const input = document.getElementById('googlePlacesApiKey');
+    if (input && savedKey) input.value = savedKey;
+  } catch (error) {
+    console.info('Unable to hydrate Google Places API key from session storage.', error);
   }
 }
 
@@ -1015,6 +1074,389 @@ function deriveCountryCode(country) {
   if (slug === 'UNITED-KINGDOM') return 'GB';
   if (slug === 'CZECH-REPUBLIC' || slug === 'CZECHIA') return 'CZ';
   return slug.split('-').map(part => part[0] || '').join('').slice(0, 2) || 'XX';
+}
+
+function haversineKm(a, b) {
+  const toRad = degrees => (degrees * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const value = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(value));
+}
+
+function normalizeGeoapifyText(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizeGooglePlaceText(value) {
+  return normalizeGeoapifyText(value);
+}
+
+function getNormalizedPlaceKind(place) {
+  const kind = String(place?.kind || place?.category || '').toLowerCase();
+  if (kind === 'food') return 'food';
+  if (kind === 'gem') return 'gem';
+  return 'itinerary';
+}
+
+function buildGooglePlaceNameVariants(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  const variants = new Set();
+  const addVariant = candidate => {
+    const normalized = normalizeGooglePlaceText(candidate);
+    if (normalized) variants.add(normalized);
+  };
+
+  const withoutParens = raw.replace(/\([^)]*\)/g, ' ');
+  const withoutSoftModifiers = raw.replace(/\b(the|original|official|authentic|famous)\b/gi, ' ');
+  const simplified = withoutParens.replace(/\b(the|original|official|authentic|famous)\b/gi, ' ');
+
+  addVariant(raw);
+  addVariant(withoutParens);
+  addVariant(withoutSoftModifiers);
+  addVariant(simplified);
+
+  return [...variants];
+}
+
+function splitGooglePlaceTokens(value) {
+  return normalizeGooglePlaceText(value).split(' ').filter(Boolean);
+}
+
+function computeGoogleTokenEditDistance(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (!left) return right.length;
+  if (!right) return left.length;
+
+  const rows = Array.from({ length: left.length + 1 }, (_, index) => Array(right.length + 1).fill(0));
+  for (let i = 0; i <= left.length; i += 1) rows[i][0] = i;
+  for (let j = 0; j <= right.length; j += 1) rows[0][j] = j;
+
+  for (let i = 1; i <= left.length; i += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost
+      );
+
+      if (
+        i > 1 &&
+        j > 1 &&
+        left[i - 1] === right[j - 2] &&
+        left[i - 2] === right[j - 1]
+      ) {
+        rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+      }
+    }
+  }
+
+  return rows[left.length][right.length];
+}
+
+function areGoogleTokensSimilar(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length >= 5 && right.length >= 5 && (left.includes(right) || right.includes(left))) return true;
+
+  const distance = computeGoogleTokenEditDistance(left, right);
+  const maxLength = Math.max(left.length, right.length);
+  if (maxLength >= 8) return distance <= 2;
+  if (maxLength >= 5) return distance <= 1;
+  return false;
+}
+
+function computeGoogleNameSimilarityScore(placeName, displayName, haystack) {
+  const variants = buildGooglePlaceNameVariants(placeName);
+  if (!variants.length) return 0;
+
+  const displayTokens = splitGooglePlaceTokens(displayName);
+  const haystackTokens = splitGooglePlaceTokens(haystack);
+  const candidateTokens = displayTokens.length ? displayTokens : haystackTokens;
+
+  if (variants.some(token => token && normalizeGooglePlaceText(displayName) === token)) return 60;
+  if (variants.some(token => token && haystack.includes(token))) return 45;
+
+  let bestRatio = 0;
+  let bestCandidateCoverage = 0;
+  for (const variant of variants) {
+    const variantTokens = splitGooglePlaceTokens(variant);
+    if (!variantTokens.length || !candidateTokens.length) continue;
+
+    let matched = 0;
+    for (const variantToken of variantTokens) {
+      if (candidateTokens.some(candidateToken => areGoogleTokensSimilar(variantToken, candidateToken))) {
+        matched += 1;
+      }
+    }
+
+    const ratio = matched / variantTokens.length;
+    if (ratio > bestRatio) bestRatio = ratio;
+    const candidateCoverage = matched / candidateTokens.length;
+    if (candidateCoverage > bestCandidateCoverage) bestCandidateCoverage = candidateCoverage;
+  }
+
+  if (bestRatio >= 0.99) return 45;
+  if (candidateTokens.length >= 2 && bestCandidateCoverage >= 0.99) return 35;
+  if (bestRatio >= 0.66) return 40;
+  if (bestRatio >= 0.5) return 25;
+  return 0;
+}
+
+function getGoogleTypeTokens(result) {
+  return [...new Set([
+    ...ensureArray(result?.types).map(item => String(item || '').toLowerCase()),
+    String(result?.primaryType || '').toLowerCase()
+  ].filter(Boolean))];
+}
+
+function isGooglePlaceTypeCompatible(result, place) {
+  const kind = getNormalizedPlaceKind(place);
+  const types = getGoogleTypeTokens(result);
+  if (!types.length) return kind !== 'food';
+
+  const hasAny = expected => expected.some(type => types.includes(type));
+
+  if (kind === 'food') {
+    return hasAny([
+      'restaurant',
+      'cafe',
+      'coffee_shop',
+      'bakery',
+      'bar',
+      'meal_takeaway',
+      'meal_delivery',
+      'ice_cream_shop',
+      'fast_food_restaurant'
+    ]);
+  }
+
+  if (hasAny([
+    'restaurant',
+    'cafe',
+    'coffee_shop',
+    'bakery',
+    'bar',
+    'meal_takeaway',
+    'meal_delivery',
+    'ice_cream_shop',
+    'fast_food_restaurant'
+  ])) {
+    return false;
+  }
+
+  return hasAny([
+    'tourist_attraction',
+    'museum',
+    'hindu_temple',
+    'mosque',
+    'church',
+    'synagogue',
+    'park',
+    'botanical_garden',
+    'historical_place',
+    'monument',
+    'art_gallery',
+    'cultural_landmark',
+    'market',
+    'shopping_mall',
+    'store',
+    'book_store',
+    'performing_arts_theater',
+    'library',
+    'plaza',
+    'neighborhood',
+    'train_station',
+    'bus_station'
+  ]);
+}
+
+function toGoogleGeoPoint(place) {
+  const lat = Number(place?.location?.latitude);
+  const lng = Number(place?.location?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return {
+    lat: Number(lat.toFixed(MIN_COORDINATE_DECIMALS)),
+    lng: Number(lng.toFixed(MIN_COORDINATE_DECIMALS))
+  };
+}
+
+async function searchGooglePlacesText(textQuery, { locationBias } = {}) {
+  const apiKey = getGooglePlacesApiKey();
+  if (!apiKey) {
+    throw new Error('Google Places API key is required before generating coordinates.');
+  }
+
+  const body = {
+    textQuery,
+    pageSize: 5
+  };
+  if (locationBias) {
+    body.locationBias = locationBias;
+  }
+
+  const url = 'https://places.googleapis.com/v1/places:searchText';
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google Places search failed with status ${response.status}.`);
+  }
+
+  const payload = await response.json();
+  return {
+    url,
+    payload,
+    places: Array.isArray(payload?.places) ? payload.places : []
+  };
+}
+
+function scoreGoogleDestinationResult(result, city, country) {
+  const geo = toGoogleGeoPoint(result);
+  const haystack = normalizeGooglePlaceText([result?.displayName?.text, result?.formattedAddress].filter(Boolean).join(' '));
+  const cityToken = normalizeGooglePlaceText(city);
+  const countryToken = normalizeGooglePlaceText(country);
+  let score = 0;
+
+  if (cityToken && haystack.includes(cityToken)) score += 60;
+  if (countryToken && haystack.includes(countryToken)) score += 20;
+  if (geo) score += 10;
+
+  return score;
+}
+
+function scoreGooglePlaceResult(result, place, destinationGeo) {
+  const displayName = result?.displayName?.text || '';
+  const formattedAddress = result?.formattedAddress || '';
+  const haystack = normalizeGooglePlaceText([displayName, formattedAddress].filter(Boolean).join(' '));
+  const cityToken = normalizeGooglePlaceText(place.city);
+  const countryToken = normalizeGooglePlaceText(place.country);
+  const geo = toGoogleGeoPoint(result);
+  const distancePenalty = geo && destinationGeo ? Math.min(60, haversineKm(destinationGeo, geo) / 2) : 0;
+  let score = 0;
+
+  score += computeGoogleNameSimilarityScore(place.name, displayName, haystack);
+  if (cityToken && haystack.includes(cityToken)) score += 15;
+  if (countryToken && haystack.includes(countryToken)) score += 10;
+  if (geo) score += 10;
+  if (isGooglePlaceTypeCompatible(result, place)) {
+    score += 12;
+  } else {
+    score -= 25;
+  }
+
+  const types = getGoogleTypeTokens(result);
+  const primaryType = String(result?.primaryType || '').toLowerCase();
+  if (types.includes('museum') || primaryType === 'museum') score += 5;
+  if (types.includes('tourist_attraction') || primaryType === 'tourist_attraction') score += 3;
+
+  return score - distancePenalty;
+}
+
+function buildGooglePlacesLocationBias(destinationGeo) {
+  if (!destinationGeo) return undefined;
+  return {
+    circle: {
+      center: {
+        latitude: destinationGeo.lat,
+        longitude: destinationGeo.lng
+      },
+      radius: 50000
+    }
+  };
+}
+
+function buildGooglePlaceQueries(place) {
+  const address = String(place.address || '').trim();
+  return [
+    {
+      label: 'name, address, city, country',
+      textQuery: [place.name, address, place.city, place.country].filter(Boolean).join(', ')
+    },
+    {
+      label: 'name, city, country',
+      textQuery: [place.name, place.city, place.country].filter(Boolean).join(', ')
+    },
+    {
+      label: 'name, country',
+      textQuery: [place.name, place.country].filter(Boolean).join(', ')
+    }
+  ];
+}
+
+async function geocodeDestination(city, country) {
+  const google = await searchGooglePlacesText(`${city}, ${country}`);
+  const best = [...google.places]
+    .map(place => ({ place, score: scoreGoogleDestinationResult(place, city, country), geo: toGoogleGeoPoint(place) }))
+    .filter(entry => entry.geo)
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (!best || best.score < GOOGLE_DESTINATION_SCORE_THRESHOLD || !best.geo) {
+    throw new Error(`Google Places could not confidently verify the destination "${city}, ${country}".`);
+  }
+
+  return best.geo;
+}
+
+function normalizeGeneratedPlace(place, fallbackKind, fallbackCity, fallbackCountry) {
+  const normalized = normalizePlaceEntity(place, fallbackKind) || {};
+  return {
+    ...normalized,
+    kind: normalized.kind || fallbackKind,
+    category: String(place?.category || normalized.kind || fallbackKind || '').trim() || fallbackKind,
+    city: String(place?.city || fallbackCity || '').trim(),
+    country: String(place?.country || fallbackCountry || '').trim(),
+    address: String(place?.address || normalized.address || '').trim()
+  };
+}
+
+async function geocodePlaceCandidate(place, destinationGeo) {
+  if (!place?.name) {
+    throw new Error(`A ${place?.kind || 'place'} is missing its name.`);
+  }
+
+  const searchVariants = buildGooglePlaceQueries(place);
+  let best;
+  for (const variant of searchVariants) {
+    const search = await searchGooglePlacesText(
+      variant.textQuery,
+      { locationBias: buildGooglePlacesLocationBias(destinationGeo) }
+    );
+    const candidate = [...search.places]
+      .map(result => ({ result, score: scoreGooglePlaceResult(result, place, destinationGeo), geo: toGoogleGeoPoint(result) }))
+      .filter(entry => entry.geo)
+      .sort((a, b) => b.score - a.score)[0];
+    if (!candidate) continue;
+    if (!best || candidate.score > best.score) {
+      best = candidate;
+    }
+    if (best.score >= GOOGLE_PLACE_SCORE_THRESHOLD) break;
+  }
+
+  if (!best || !best.geo || best.score < GOOGLE_PLACE_SCORE_THRESHOLD) {
+    throw new Error(`Google Places could not confidently verify "${place.name}" in ${place.city}, ${place.country}.`);
+  }
+
+  return {
+    ...place,
+    geo: best.geo
+  };
 }
 
 function deriveBudgetSymbol(blog) {
@@ -1084,19 +1526,6 @@ function normalizeTags(country, rawTags, city, explicitContinent) {
   return unique;
 }
 
-function renderHomeTagSettings() {
-  const container = document.getElementById('homeTagSettings');
-  if (!container) return;
-  const selected = new Set(HOME_FILTER_TAGS);
-  const options = [...new Set([...DEFAULT_HOME_FILTER_TAGS, ...CONTINENT_TAGS, 'architecture', 'coastal', 'citybreak'])];
-  container.innerHTML = options.map(tag => `
-    <label class="switch">
-      <input type="checkbox" ${selected.has(tag) ? 'checked' : ''} onchange="toggleHomeFilterTag('${tag}', this.checked)">
-      Show "${tag}" on home page
-    </label>
-  `).join('');
-}
-
 function setManualImageOverrides(blog) {
   document.getElementById('cardImageUrl').value = (blog && blog.image) || '';
   document.getElementById('heroImageUrl').value = (blog && (blog.heroImage || blog.image)) || '';
@@ -1131,29 +1560,22 @@ function getPexelsVariantQueries(city, country, variant) {
   const cityCountry = `${city}, ${country}`;
   if (variant === 'card') {
     return [
-      `${cityCountry} landmark`,
-      `${cityCountry} famous landmark`,
-      `${cityCountry} historic site`,
+      `${cityCountry} skyline`,
+      `${cityCountry} cityscape`,
+      `${cityCountry} aerial view`,
       `${cityCountry} old town`,
-      `${cityCountry} monument`,
-      `${cityCountry} bridge`,
-      `${cityCountry} castle`,
-      `${cityCountry} monument`
+      `${cityCountry} riverfront`,
+      `${cityCountry} landmark district`
     ];
   }
 
   return [
-      `${cityCountry} landmark`,
-      `${cityCountry} famous landmark`,
-      `${cityCountry} historic site`,
-      `${cityCountry} monument`,
-      `${cityCountry} castle`,
-      `${cityCountry} palace`,
-      `${cityCountry} cathedral`,
-      `${cityCountry} old town`,
-      `${cityCountry} bridge`,
-      `${cityCountry} cathedral`,
-      `${cityCountry} skyline`
+    `${cityCountry} famous monument`,
+    `${cityCountry} iconic landmark`,
+    `${cityCountry} cathedral`,
+    `${cityCountry} palace`,
+    `${cityCountry} castle`,
+    `${cityCountry} tower`
   ];
 }
 
@@ -1197,9 +1619,12 @@ function scorePexelsPhoto(photo, city, country, variant) {
   return score;
 }
 
-async function fetchPexelsImage(city, country, variant) {
+async function fetchPexelsCandidates(city, country, variant) {
   const apiKey = getPexelsApiKey();
-  if (!apiKey) return '';
+  if (!apiKey) return [];
+
+  const seen = new Set();
+  const candidates = [];
 
   for (const query of getPexelsVariantQueries(city, country, variant)) {
     const params = new URLSearchParams({
@@ -1220,38 +1645,71 @@ async function fetchPexelsImage(city, country, variant) {
 
     const payload = await response.json();
     const photos = Array.isArray(payload?.photos) ? payload.photos : [];
-    const candidates = photos
+    const ranked = photos
       .map(photo => ({ photo, score: scorePexelsPhoto(photo, city, country, variant) }))
       .filter(item => item.score >= 0)
       .sort((a, b) => b.score - a.score);
 
-    const bestPhoto = candidates[0]?.photo;
-    const imageUrl =
-      bestPhoto?.src?.large2x ||
-      bestPhoto?.src?.landscape ||
-      bestPhoto?.src?.large ||
-      bestPhoto?.src?.original ||
-      '';
-
-    if (imageUrl && await canUseImageUrl(imageUrl)) {
-      return imageUrl;
+    for (const item of ranked) {
+      const imageUrl =
+        item?.photo?.src?.large2x ||
+        item?.photo?.src?.landscape ||
+        item?.photo?.src?.large ||
+        item?.photo?.src?.original ||
+        '';
+      if (!imageUrl || seen.has(imageUrl)) continue;
+      seen.add(imageUrl);
+      candidates.push({ ...item, imageUrl });
     }
   }
 
-  return '';
+  return candidates;
+}
+
+async function resolvePexelsImagePair(city, country) {
+  const [cardCandidates, heroCandidates] = await Promise.all([
+    fetchPexelsCandidates(city, country, 'card'),
+    fetchPexelsCandidates(city, country, 'hero')
+  ]);
+  const usableCard = [];
+  for (const candidate of cardCandidates) {
+    if (await canUseImageUrl(candidate.imageUrl)) usableCard.push(candidate);
+    if (usableCard.length >= 3) break;
+  }
+
+  const usableHero = [];
+  for (const candidate of heroCandidates) {
+    if (await canUseImageUrl(candidate.imageUrl)) usableHero.push(candidate);
+    if (usableHero.length >= 4) break;
+  }
+
+  const cardImage = usableCard[0]?.imageUrl || '';
+  const heroImage =
+    usableHero.find(candidate => candidate.imageUrl !== cardImage)?.imageUrl ||
+    usableCard.find(candidate => candidate.imageUrl !== cardImage)?.imageUrl ||
+    usableHero[0]?.imageUrl ||
+    '';
+
+  return {
+    card: cardImage,
+    hero: heroImage
+  };
 }
 
 async function ensureRenderableImage(url, type, city, country) {
   const cleanUrl = typeof url === 'string' ? url.trim() : '';
   if (cleanUrl && await canUseImageUrl(cleanUrl)) return cleanUrl;
   const variant = type === 'hero' ? 'hero' : 'card';
-  const pexelsImage = await fetchPexelsImage(city, country, variant);
-  if (pexelsImage) return pexelsImage;
+  const pexelsCandidates = await fetchPexelsCandidates(city, country, variant);
+  for (const candidate of pexelsCandidates) {
+    if (await canUseImageUrl(candidate.imageUrl)) return candidate.imageUrl;
+  }
   return buildAdminCityImageRoute(city, country, variant);
 }
 
 async function ensureRenderableBlogImages(blog) {
   const manual = getManualImageOverrides();
+  const pexelsPair = (!manual.image || !manual.heroImage) ? await resolvePexelsImagePair(blog.city, blog.country) : { card: '', hero: '' };
   const normalizedScores = {
     walkability: clampScore(blog?.scores?.walkability, 7),
     affordability: clampScore(blog?.scores?.affordability, 7),
@@ -1298,8 +1756,13 @@ async function ensureRenderableBlogImages(blog) {
       budget: forceUsdText(blog?.stats?.budget || blog?.budget, '$60/day'),
       walkScore: formatWalkScore(blog?.stats?.walkScore)
     },
-    image: await ensureRenderableImage(manual.image || blog.image, 'card', blog.city, blog.country),
-    heroImage: await ensureRenderableImage(manual.heroImage || blog.heroImage || manual.image || blog.image, 'hero', blog.city, blog.country),
+    image: await ensureRenderableImage(manual.image || blog.image || pexelsPair.card, 'card', blog.city, blog.country),
+    heroImage: await ensureRenderableImage(
+      manual.heroImage || blog.heroImage || pexelsPair.hero,
+      'hero',
+      blog.city,
+      blog.country
+    ),
     food: await Promise.all((blog.food || []).map(async item => ({
       ...item,
       image: ''
@@ -1422,7 +1885,7 @@ async function callAdminApi(action, body = {}) {
 const BLOG_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['version', 'city', 'country', 'title', 'excerpt', 'image', 'heroImage', 'days', 'budget', 'bestSeason', 'date', 'tags', 'stats', 'meta', 'geo', 'scores', 'travelStyles', 'experience', 'highlights', 'warnings', 'skipIf', 'itinerary', 'food', 'gems', 'budgetBreakdown'],
+  required: ['version', 'city', 'country', 'title', 'excerpt', 'image', 'heroImage', 'days', 'budget', 'bestSeason', 'date', 'tags', 'stats', 'meta', 'scores', 'travelStyles', 'experience', 'highlights', 'warnings', 'skipIf', 'itinerary', 'food', 'gems', 'budgetBreakdown'],
   properties: {
     version: { type: 'number' },
     city: { type: 'string' },
@@ -1458,15 +1921,6 @@ const BLOG_SCHEMA = {
         language: { type: 'string' },
         timeZone: { type: 'string' },
         airportCode: { type: 'string' }
-      }
-    },
-    geo: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['lat', 'lng'],
-      properties: {
-        lat: { type: 'number' },
-        lng: { type: 'number' }
       }
     },
     scores: {
@@ -1510,7 +1964,22 @@ const BLOG_SCHEMA = {
           day: { type: 'string' },
           title: { type: 'string' },
           text: { type: 'string' },
-          spots: { type: 'array', items: { type: 'string' } }
+          spots: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'city', 'country', 'category', 'desc'],
+              properties: {
+                name: { type: 'string' },
+                city: { type: 'string' },
+                country: { type: 'string' },
+                category: { type: 'string' },
+                desc: { type: 'string' },
+                geo: { type: 'null' }
+              }
+            }
+          }
         }
       }
     },
@@ -1519,9 +1988,14 @@ const BLOG_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'cuisine', 'desc', 'price', 'image'],
+        required: ['name', 'address', 'city', 'country', 'category', 'cuisine', 'desc', 'price', 'image'],
         properties: {
           name: { type: 'string' },
+          address: { type: 'string' },
+          city: { type: 'string' },
+          country: { type: 'string' },
+          category: { type: 'string' },
+          geo: { type: 'null' },
           cuisine: { type: 'string' },
           desc: { type: 'string' },
           price: { type: 'string' },
@@ -1534,9 +2008,13 @@ const BLOG_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'desc', 'tip'],
+        required: ['name', 'city', 'country', 'category', 'desc', 'tip'],
         properties: {
           name: { type: 'string' },
+          city: { type: 'string' },
+          country: { type: 'string' },
+          category: { type: 'string' },
+          geo: { type: 'null' },
           desc: { type: 'string' },
           tip: { type: 'string' }
         }
@@ -1567,7 +2045,21 @@ Use real-sounding travel advice, practical budgets, best months, tags, food spot
 
 Image fields are managed by the admin panel, so return empty strings for image, heroImage, and every food image.
 
-Currency is not optional: every monetary value must be in USD only, with the $ symbol only. Never use yen, euro, pound, rupee, baht, or any local-currency symbol/code anywhere in the JSON.`;
+Currency is not optional: every monetary value must be in USD only, with the $ symbol only. Never use yen, euro, pound, rupee, baht, or any local-currency symbol/code anywhere in the JSON.
+
+Do not include coordinates anywhere in the JSON. The admin panel will geocode every place after generation.
+
+Return all places with name, city, country, and category.
+
+For itinerary spots and hidden gems, use only real map-findable places such as official landmarks, museums, temples, forts, markets, parks, neighborhoods, streets, gates, palaces, stepwells, cafes, or other venues that are commonly listed on major map products. Do not invent poetic area names, unofficial districts, descriptive labels, or tourism phrases.
+
+For food spots, use the exact venue name only and include a short real-world address. Do not invent descriptive name variants, dish names, slogans, or branch nicknames unless they are part of the official venue name.
+
+Only use real named places that are likely to exist in map databases. If you are unsure a venue or landmark exists, replace it with a better-known real place.
+
+Treat place validity as the highest priority. Every itinerary spot, food venue, and hidden gem must be something a traveler could find by exact name plus city on Google Maps or Google Places. If you are not highly confident that the place exists in the stated city and country, do not include it.
+
+Prefer long-standing, clearly named, map-established places over obscure or poetic suggestions. Food entries must be real operating venues. Itinerary spots and hidden gems must be real attractions, streets, neighborhoods, parks, museums, markets, temples, forts, gates, palaces, or other mappable landmarks.`;
 }
 
 function defaultUserPrompt() {
@@ -1584,9 +2076,31 @@ RULES:
 - bestSeason should be concise, e.g. "Apr-Jun, Sep-Oct"
 - date should be the current month/year or a natural editorial date
 - itinerary length must match the days value
-- every itinerary day must include 2 to 5 destination names in spots
-- each spots entry must be a short place or area name only, not a sentence
+- every itinerary day must include 2 to 5 destination spot objects in spots
+- every spots entry must include name, city, country, category, a short desc, and geo set to null
+- each spots.name must be the real official or commonly mapped place name only, not a sentence
+- before returning a place, sanity-check that it is a real place in the requested city and country and would likely appear as an exact-name result on Google Maps or Google Places
+- never invent neighborhood-style names such as "Textile Village", "Old Artist Quarter", "Heritage Lane", or "Local Bazaar District" unless that exact name is commonly used on maps
+- itinerary spots must be map-findable landmarks, museums, markets, streets, neighborhoods, gates, temples, forts, gardens, parks, or other real venues
+- each spots.desc should be a crisp 1 sentence reason to go there or what the traveler experiences there
+- coordinates must not be included anywhere in the response
+- if you cannot confidently place a venue or landmark in a real map database, replace it with a different real place
 - if a place is named in the itinerary text, include it in that day's spots array
+- every food.name must be the venue, restaurant, cafe, stall, or bakery name, never the name of a dish
+- every food.name must match the establishment listing as closely as possible, using the official or most commonly mapped venue name only
+- never write dish-first names such as "Rawat Pyaaz Kachori", "Old Famous Lassi", or "Best Chai Stop" unless that is the actual official venue name
+- every food place must be a real currently operating venue or a venue with a strong map listing footprint in the city
+- if a venue is known for a dish, put the dish in food.desc, not in food.name
+- every food item must include name, address, city, country, category, cuisine, desc, price, image, and geo set to null
+- every food.address must be a short real-world address, area, or street reference that helps map lookup, such as "Station Road" or "MI Road, Jayanti Market"
+- every food.cuisine should describe the cuisine or what kind of place it is, e.g. "Rajasthani restaurant", "traditional beer hall", or "specialty coffee cafe"
+- use food.desc to mention what to order, what stands out, or the signature dish instead of putting dish names in food.name
+- every hidden gem must include name, city, country, category, desc, tip, and geo set to null
+- every hidden gem name must also be a real map-findable place, not a descriptive concept or made-up local area
+- hidden gems should prefer smaller but real places such as lesser-known temples, stepwells, museums, cafes, artisan workshops, local parks, or specific markets
+- hidden gems must still be valid map results with exact names, not "vibes", not unofficial nicknames, and not loosely described micro-areas
+- never return names like "Secret Sunset Point", "Textile Village", "Local Crafts Quarter", or other plausible-sounding but unmapped labels
+- the top-level destination geo must be omitted
 
 TAGS (VERY IMPORTANT):
 - tags must be high-quality and useful for filtering
@@ -1673,6 +2187,13 @@ function setRecommendationDebugStatus(message, type) {
   status.className = `status ${type || ''}`;
 }
 
+function setGeoapifyDebugStatus(message, type) {
+  const status = document.getElementById('geoapifyDebugStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.className = `status ${type || ''}`;
+}
+
 function slugify(value) {
   return String(value || 'destination')
     .toLowerCase()
@@ -1706,6 +2227,36 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeGeoPoint(value) {
+  const lat = Number(value?.lat);
+  const lng = Number(value?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return undefined;
+  return {
+    lat: Number(lat.toFixed(MIN_COORDINATE_DECIMALS)),
+    lng: Number(lng.toFixed(MIN_COORDINATE_DECIMALS))
+  };
+}
+
+function countCoordinateDecimals(value) {
+  const normalized = String(value).toLowerCase();
+  if (normalized.includes('e-')) {
+    const [, exponent = '0'] = normalized.split('e-');
+    return Number(exponent);
+  }
+  const [, fraction = ''] = normalized.split('.');
+  return fraction.length;
+}
+
+function hasRequiredCoordinatePrecision(value) {
+  if (typeof value === 'number') {
+    // Numeric coordinates lose trailing zeroes in JS, so treat valid finite numbers as precise enough
+    // once they have been normalized through our geocoding pipeline.
+    return Number.isFinite(value);
+  }
+  return countCoordinateDecimals(value) >= MIN_COORDINATE_DECIMALS;
+}
+
 function normalizePlaceEntity(place, fallbackKind = 'place') {
   if (!place) return null;
   if (typeof place === 'string') {
@@ -1714,8 +2265,10 @@ function normalizePlaceEntity(place, fallbackKind = 'place') {
       cityId: '',
       kind: fallbackKind,
       name: place,
+      geo: undefined,
       desc: '',
       tip: '',
+      address: '',
       cuisine: '',
       price: '',
       image: ''
@@ -1726,8 +2279,10 @@ function normalizePlaceEntity(place, fallbackKind = 'place') {
     cityId: place.cityId || '',
     kind: place.kind || fallbackKind,
     name: place.name || place.title || '',
-    desc: place.desc || '',
+    geo: normalizeGeoPoint(place.geo),
+    desc: place.desc || place.description || place.text || '',
     tip: place.tip || '',
+    address: place.address || '',
     cuisine: place.cuisine || '',
     price: place.price || '',
     image: place.image || ''
@@ -1746,7 +2301,16 @@ function resolvePlaceRefs(refs, placesById, fallbackKind) {
   return ensureArray(refs)
     .map(ref => {
       if (typeof ref === 'string' && placesById.has(ref)) return placesById.get(ref);
-      return normalizePlaceEntity(ref, fallbackKind);
+      const normalized = normalizePlaceEntity(ref, fallbackKind);
+      const matched = normalized?.id && placesById.has(normalized.id) ? placesById.get(normalized.id) : null;
+      if (normalized?.geo) {
+        return {
+          ...(matched || normalized),
+          ...normalized,
+          geo: normalized.geo
+        };
+      }
+      return matched || normalized;
     })
     .filter(place => place && place.name);
 }
@@ -2218,6 +2782,40 @@ function renderRecommendationDebugOutput(blog, explanations) {
   `;
 }
 
+function renderGeoapifyDebugOutput(debug) {
+  const container = document.getElementById('geoapifyDebugOutput');
+  if (!container) return;
+  const bestScore = Number.isFinite(debug?.best?.score) ? debug.best.score.toFixed(1) : 'n/a';
+  container.innerHTML = `
+    <div class="debug-panel" style="margin-top:1rem;">
+      <div class="debug-summary">
+        <strong>${debug.place.name}</strong>
+        <div class="hint">Place: ${debug.place.city}, ${debug.place.country} | Destination: ${debug.destination.city}, ${debug.destination.country}</div>
+        <div class="hint">Destination geo: ${debug.destinationGeo.lat}, ${debug.destinationGeo.lng} | best score: ${bestScore} | threshold: ${GOOGLE_PLACE_SCORE_THRESHOLD}</div>
+      </div>
+      <div class="debug-grid">
+        ${debug.variants.map(variant => `
+          <div class="debug-card ${variant.best && variant.best.score >= GOOGLE_PLACE_SCORE_THRESHOLD ? 'ok' : 'err'}">
+            <div class="debug-card-head">
+              <strong>${variant.label}</strong>
+              <span class="debug-badge ${variant.best && variant.best.score >= GOOGLE_PLACE_SCORE_THRESHOLD ? 'ok' : 'err'}">${variant.best ? `best ${variant.best.score.toFixed(1)}` : 'no candidates'}</span>
+            </div>
+            <div class="debug-list">
+              <span><strong>Query:</strong> <code>${escapeHtml(variant.query)}</code></span>
+              <span><strong>URL:</strong> <code>${escapeHtml(variant.url)}</code></span>
+              ${variant.candidates.length ? variant.candidates.map(candidate => `<span>${escapeHtml(candidate.summary)}</span>`).join('') : '<span>No results returned by Google Places.</span>'}
+            </div>
+            <details style="margin-top:0.75rem;">
+              <summary>Raw Google Places payload</summary>
+              <pre class="json-box" style="margin-top:0.75rem;">${escapeHtml(JSON.stringify(variant.rawPayload, null, 2))}</pre>
+            </details>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function populateRecommendationDebugCities(blogs) {
   RECOMMENDATION_DEBUG_BLOGS = ensureArray(blogs);
   const datalist = document.getElementById('recommendationDebugCityOptions');
@@ -2259,6 +2857,90 @@ async function runRecommendationDebug() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function runGeoapifyDebug() {
+  const placeName = document.getElementById('geoDebugPlaceName')?.value.trim() || '';
+  const placeCity = document.getElementById('geoDebugPlaceCity')?.value.trim() || '';
+  const placeCountry = document.getElementById('geoDebugPlaceCountry')?.value.trim() || '';
+  const destinationCity = document.getElementById('geoDebugDestinationCity')?.value.trim() || placeCity;
+  const destinationCountry = document.getElementById('geoDebugDestinationCountry')?.value.trim() || placeCountry;
+  const output = document.getElementById('geoapifyDebugOutput');
+
+  if (output) output.innerHTML = '';
+  if (!placeName || !placeCity || !placeCountry || !destinationCity || !destinationCountry) {
+    setGeoapifyDebugStatus('Place name, place city, place country, destination city, and destination country are required.', 'err');
+    return;
+  }
+
+  try {
+    setGeoapifyDebugStatus('Running Google Places debug...', '');
+    const destinationGeo = await geocodeDestination(destinationCity, destinationCountry);
+    const place = {
+      name: placeName,
+      city: placeCity,
+      country: placeCountry,
+      kind: 'debug-place',
+      category: 'debug-place'
+    };
+    const variants = [];
+    let best;
+    for (const variant of buildGooglePlaceQueries(place)) {
+      const search = await searchGooglePlacesText(variant.textQuery, {
+        locationBias: buildGooglePlacesLocationBias(destinationGeo)
+      });
+      const candidates = search.places
+        .map(result => {
+          const geo = toGoogleGeoPoint(result);
+          const score = scoreGooglePlaceResult(result, place, destinationGeo);
+          const distanceKm = geo ? haversineKm(destinationGeo, geo) : null;
+          return {
+            result,
+            geo,
+            score,
+            summary: `${result?.displayName?.text || 'Unnamed result'} | score ${score.toFixed(1)} | type ${String(result?.primaryType || 'unknown')} | address ${result?.formattedAddress || 'n/a'} | distance ${distanceKm == null ? 'n/a' : `${distanceKm.toFixed(1)} km`}`
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+      const top = candidates[0];
+      if (top && (!best || top.score > best.score)) best = top;
+      variants.push({
+        label: variant.label,
+        query: variant.textQuery,
+        url: search.url,
+        rawPayload: search.payload,
+        best: top || null,
+        candidates: candidates.slice(0, 5)
+      });
+    }
+
+    renderGeoapifyDebugOutput({
+      place,
+      destination: { city: destinationCity, country: destinationCountry },
+      destinationGeo,
+      best,
+      variants
+    });
+
+    if (best && best.score >= GOOGLE_PLACE_SCORE_THRESHOLD) {
+      setGeoapifyDebugStatus(`Google Places found a passing candidate for "${placeName}" with score ${best.score.toFixed(1)}.`, 'ok');
+      return;
+    }
+
+    setGeoapifyDebugStatus(`Google Places returned results, but none reached the score threshold for "${placeName}". Inspect the raw payload below.`, 'err');
+  } catch (error) {
+    console.error(error);
+    setGeoapifyDebugStatus(error.message || 'Unable to run Google Places debug.', 'err');
+  }
+}
+
 function buildPlaceId(cityId, name) {
   return `${cityId}-place-${slugify(name)}`;
 }
@@ -2267,8 +2949,24 @@ function uniqueStrings(values) {
   return [...new Set(ensureArray(values).map(value => String(value || '').trim()).filter(Boolean))];
 }
 
+function normalizeSpotRef(value) {
+  if (typeof value === 'string') {
+    const name = value.trim();
+    return name || null;
+  }
+  const place = normalizePlaceEntity(value, 'itinerary');
+  return place?.name ? place : null;
+}
+
 function normalizeItineraryDay(day) {
-  const explicitSpots = uniqueStrings(day?.spots);
+  const explicitSpots = ensureArray(day?.spots)
+    .map(normalizeSpotRef)
+    .filter(Boolean)
+    .filter((spot, index, spots) => {
+      const name = typeof spot === 'string' ? spot : spot.name;
+      const slug = slugify(name);
+      return spots.findIndex(entry => slugify(typeof entry === 'string' ? entry : entry.name) === slug) === index;
+    });
   return {
     ...(day || {}),
     day: String(day?.day || ''),
@@ -2283,6 +2981,59 @@ function assertItinerarySpots(itinerary) {
   if (invalidDay) {
     throw new Error(`Each itinerary day must include destination spots. Missing spots for "${String(invalidDay.title || invalidDay.day || 'Untitled day')}".`);
   }
+}
+
+function formatCoordinateLabel(kind, label) {
+  const normalizedKind = String(kind || 'place');
+  if (normalizedKind === 'itinerary') return `itinerary spot "${label}"`;
+  if (normalizedKind === 'food') return `food spot "${label}"`;
+  if (normalizedKind === 'gem') return `hidden gem "${label}"`;
+  return `${normalizedKind} "${label}"`;
+}
+
+function assertValidGeoPoint(value, label, { requireExactPrecision = true } = {}) {
+  const point = normalizeGeoPoint(value);
+  if (!point) {
+    throw new Error(`Missing valid coordinates for ${label}. Every saved location must include real latitude and longitude values.`);
+  }
+  if (Math.abs(point.lat) < 0.000001 && Math.abs(point.lng) < 0.000001) {
+    throw new Error(`Refusing to save placeholder coordinates for ${label}. Do not use 0,0 or empty fallback coordinates.`);
+  }
+  if (
+    requireExactPrecision &&
+    (!hasRequiredCoordinatePrecision(value?.lat) || !hasRequiredCoordinatePrecision(value?.lng))
+  ) {
+    throw new Error(`Coordinates for ${label} must use at least ${MIN_COORDINATE_DECIMALS} decimal places. Approximate coordinates are not allowed.`);
+  }
+  return point;
+}
+
+function assertCoordinateIntegrity(blog, { requireExactPrecision = true } = {}) {
+  assertValidGeoPoint(blog.geo, `destination "${String(blog.city || 'Untitled destination')}"`, { requireExactPrecision });
+
+  const seenByPlaceSlug = new Map();
+  const registerPlace = (place, fallbackKind) => {
+    const normalized = normalizePlaceEntity(place, fallbackKind);
+    if (!normalized?.name) return;
+
+    const label = formatCoordinateLabel(fallbackKind, normalized.name);
+    const geo = assertValidGeoPoint(normalized.geo, label, { requireExactPrecision });
+    const slug = slugify(normalized.name);
+    const previous = seenByPlaceSlug.get(slug);
+    if (
+      previous &&
+      (Math.abs(previous.lat - geo.lat) > 0.000001 || Math.abs(previous.lng - geo.lng) > 0.000001)
+    ) {
+      throw new Error(`Conflicting coordinates detected for "${normalized.name}". ${previous.label} and ${label} must point to the same exact place.`);
+    }
+    seenByPlaceSlug.set(slug, { label, lat: geo.lat, lng: geo.lng });
+  };
+
+  ensureArray(blog.itinerary).forEach(day => {
+    ensureArray(day?.spots).forEach(spot => registerPlace(spot, 'itinerary'));
+  });
+  ensureArray(blog.food).forEach(place => registerPlace(place, 'food'));
+  ensureArray(blog.gems).forEach(place => registerPlace(place, 'gem'));
 }
 
 function buildPlaceDocuments(blog, cityId) {
@@ -2301,13 +3052,20 @@ function buildPlaceDocuments(blog, cityId) {
       name: normalized.name,
       kind: existing.kind === kind ? existing.kind : (existing.kind || kind),
       kinds: [...new Set([...(existing.kinds || []), kind])],
+      geo: normalized.geo || existing.geo || {},
       desc: normalized.desc || existing.desc || '',
       tip: normalized.tip || existing.tip || '',
+      address: normalized.address || existing.address || '',
       cuisine: normalized.cuisine || existing.cuisine || '',
       price: normalized.price || existing.price || '',
       image: normalized.image || existing.image || ''
     });
-    return placeId;
+    return {
+      ...normalized,
+      id: placeId,
+      cityId,
+      kind
+    };
   };
 
   const itinerary = ensureArray(blog.itinerary).map(rawDay => {
@@ -2409,7 +3167,7 @@ function normalizeBlog(raw) {
       timeZone: clean?.meta?.timeZone || '',
       airportCode: clean?.meta?.airportCode || ''
     },
-    geo: clean.geo || { lat: 0, lng: 0 },
+    geo: normalizeGeoPoint(clean.geo),
     scores: clean.scores || {
       walkability: 7,
       affordability: 7,
@@ -2438,6 +3196,7 @@ function normalizeBlog(raw) {
     budgetSymbol: '$'
   };
   assertItinerarySpots(normalized.itinerary);
+  assertCoordinateIntegrity(normalized, { requireExactPrecision: false });
   normalized.recommendationProfile = deriveRecommendationProfile(normalized);
   return normalized;
 }
@@ -2499,8 +3258,7 @@ function extractJsonFromApiResponse(data) {
   return JSON.parse(trimmed);
 }
 
-function buildRequestBody(endpoint, city, systemPrompt, userPrompt, model) {
-  const renderedPrompt = userPrompt.split('{{city}}').join(city);
+function buildStructuredRequestBody(endpoint, model, systemPrompt, userPrompt, schema, schemaName = 'smilesandpostcards_payload') {
   if (endpoint.includes('generativelanguage.googleapis.com')) {
     return {
       systemInstruction: {
@@ -2509,7 +3267,7 @@ function buildRequestBody(endpoint, city, systemPrompt, userPrompt, model) {
       contents: [
         {
           role: 'user',
-          parts: [{ text: renderedPrompt }]
+          parts: [{ text: userPrompt }]
         }
       ],
       generationConfig: {
@@ -2523,14 +3281,14 @@ function buildRequestBody(endpoint, city, systemPrompt, userPrompt, model) {
       model,
       input: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: renderedPrompt }
+        { role: 'user', content: userPrompt }
       ],
       text: {
         format: {
           type: 'json_schema',
-          name: 'smilesandpostcards_blog',
+          name: schemaName,
           strict: true,
-          schema: BLOG_SCHEMA
+          schema
         }
       }
     };
@@ -2541,20 +3299,31 @@ function buildRequestBody(endpoint, city, systemPrompt, userPrompt, model) {
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: renderedPrompt }
+        { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' }
     };
   }
 
   return {
-    city,
     model,
-    featured: document.getElementById('featured').checked,
     systemPrompt,
-    prompt: renderedPrompt,
-    schema: BLOG_SCHEMA
+    prompt: userPrompt,
+    schema
   };
+}
+
+function buildRequestBody(endpoint, city, systemPrompt, userPrompt, model) {
+  const renderedPrompt = userPrompt.split('{{city}}').join(city);
+  const payload = buildStructuredRequestBody(endpoint, model, systemPrompt, renderedPrompt, BLOG_SCHEMA, 'smilesandpostcards_blog');
+  if (!endpoint.includes('generativelanguage.googleapis.com') && !endpoint.includes('/v1/responses') && !endpoint.includes('/v1/chat/completions')) {
+    return {
+      city,
+      featured: document.getElementById('featured').checked,
+      ...payload
+    };
+  }
+  return payload;
 }
 
 function buildRequestUrl(endpoint, model, apiKey) {
@@ -2568,6 +3337,94 @@ function buildRequestUrl(endpoint, model, apiKey) {
     return `${normalizedBase}/${encodeURIComponent(model)}:generateContent${apiKey ? `${separator}key=${encodeURIComponent(apiKey)}` : ''}`;
   }
   return endpoint;
+}
+
+async function resolvePlaceCoordinates(place, destinationGeo) {
+  return geocodePlaceCandidate(place, destinationGeo);
+}
+
+async function resolveGeneratedPlaceList(rawPlaces, fallbackKind, destinationCity, destinationCountry, destinationGeo, droppedPlaces, collectionLabel) {
+  const resolved = await Promise.all(ensureArray(rawPlaces).map(async rawPlace => {
+    const place = normalizeGeneratedPlace(rawPlace, fallbackKind, destinationCity, destinationCountry);
+    try {
+      return await resolvePlaceCoordinates(place, destinationGeo);
+    } catch (error) {
+      droppedPlaces.push({
+        name: place.name || 'Unnamed place',
+        kind: getNormalizedPlaceKind(place),
+        collection: collectionLabel,
+        reason: error?.message || 'Unable to verify place coordinates.'
+      });
+      return null;
+    }
+  }));
+
+  return resolved.filter(Boolean);
+}
+
+async function enrichDraftWithGeocoding(rawDraft, modelConfig) {
+  const clean = stripUnsafeText(rawDraft || {});
+  const destinationCity = String(clean.city || modelConfig.destinationCity || '').trim();
+  const destinationCountry = String(clean.country || '').trim();
+  if (!destinationCity || !destinationCountry) {
+    throw new Error('Generated JSON must include the destination city and country before geocoding can run.');
+  }
+
+  const destinationGeo = await geocodeDestination(destinationCity, destinationCountry);
+  const droppedPlaces = [];
+
+  const itinerary = await Promise.all(ensureArray(clean.itinerary).map(async rawDay => {
+    const dayLabel = String(rawDay?.title || rawDay?.day || 'Untitled day');
+    const day = {
+      ...rawDay,
+      spots: await resolveGeneratedPlaceList(
+        rawDay?.spots,
+        'itinerary',
+        destinationCity,
+        destinationCountry,
+        destinationGeo,
+        droppedPlaces,
+        `itinerary day "${dayLabel}"`
+      )
+    };
+    return day;
+  })).then(days => days.filter(day => ensureArray(day?.spots).length));
+
+  const food = await resolveGeneratedPlaceList(
+    clean.food,
+    'food',
+    destinationCity,
+    destinationCountry,
+    destinationGeo,
+    droppedPlaces,
+    'food'
+  );
+
+  const gems = await resolveGeneratedPlaceList(
+    clean.gems,
+    'gem',
+    destinationCity,
+    destinationCountry,
+    destinationGeo,
+    droppedPlaces,
+    'hidden gems'
+  );
+
+  if (!itinerary.length) {
+    throw new Error(`All generated itinerary places for ${destinationCity}, ${destinationCountry} failed verification. Tighten the prompt or regenerate with better-known places.`);
+  }
+
+  return {
+    ...clean,
+    geo: destinationGeo,
+    days: itinerary.length,
+    itinerary,
+    food,
+    gems,
+    __verificationSummary: {
+      droppedPlaces
+    }
+  };
 }
 
 function formatFirebaseAuthError(error) {
@@ -2659,6 +3516,7 @@ async function generateStory() {
   const systemPrompt = document.getElementById('systemPrompt').value.trim();
   const userPrompt = document.getElementById('userPrompt').value.trim();
   persistPexelsApiKey();
+  persistGooglePlacesApiKey();
 
   if (!city || !endpoint || !systemPrompt || !userPrompt) {
     setStatus('City, endpoint, system prompt, and user prompt are required.', 'err');
@@ -2673,7 +3531,7 @@ async function generateStory() {
   const generateBtn = document.getElementById('generateBtn');
   generateBtn.disabled = true;
   document.getElementById('saveBtn').disabled = true;
-  setStatus(`Generating ${city} from API...`, '');
+  setStatus(`Generating ${city}, then verifying every place with Google Places...`, '');
 
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -2694,11 +3552,25 @@ async function generateStory() {
     }
 
     const apiData = await response.json();
-    generatedDraft = await ensureRenderableBlogImages(normalizeBlog(extractJsonFromApiResponse(apiData)));
+    const rawDraft = extractJsonFromApiResponse(apiData);
+    const geocodedDraft = await enrichDraftWithGeocoding(rawDraft, {
+      endpoint,
+      apiKey,
+      model,
+      destinationCity: city,
+      destinationCountry: rawDraft?.country || ''
+    });
+    const droppedPlaces = ensureArray(geocodedDraft?.__verificationSummary?.droppedPlaces);
+    generatedDraft = await ensureRenderableBlogImages(normalizeBlog(geocodedDraft));
     renderPreview(generatedDraft);
     document.getElementById('jsonBox').textContent = JSON.stringify(generatedDraft, null, 2);
     document.getElementById('saveBtn').disabled = false;
-    setStatus('Generated successfully. Review the preview, then save it to the site.', 'ok');
+    setStatus(
+      droppedPlaces.length
+        ? `Generated successfully. Coordinates were verified through Google Places, and ${droppedPlaces.length} unverifiable place${droppedPlaces.length === 1 ? '' : 's'} were removed automatically. Review the preview, then save it to the site.`
+        : 'Generated successfully. Coordinates were verified through Google Places. Review the preview, then save it to the site.',
+      'ok'
+    );
     trackEventSafe('form_submit_success', {
       form_name: 'story_generation',
       location: 'generation_setup',
@@ -2755,6 +3627,11 @@ async function saveStory() {
 
   try {
     const result = await callAdminApi('saveStory', { draft: generatedDraft });
+    if (result.savedDraft) {
+      generatedDraft = result.savedDraft;
+      renderPreview(generatedDraft);
+      document.getElementById('jsonBox').textContent = JSON.stringify(generatedDraft, null, 2);
+    }
     let recommendationMessage = '';
     try {
       await loadRecommendationsAdmin();
@@ -2769,7 +3646,7 @@ async function saveStory() {
       setRecommendationsStatus(message, 'err');
     }
     setStatus(
-      `${generatedDraft.city} published to Supabase. The public site cache was refreshed immediately.${recommendationMessage}`,
+      `${generatedDraft.city} published to Supabase. Google Places-verified coordinates were saved and the public site cache was refreshed immediately.${recommendationMessage}`,
       'ok'
     );
     trackEventSafe('form_submit_success', {
@@ -2951,34 +3828,6 @@ async function toggleHomeVisibility(id, nextVisible) {
   }
 }
 
-async function loadHomepageSettings() {
-  renderHomeTagSettings();
-  try {
-    const payload = await loadAdminView('homepage');
-    HOME_FILTER_TAGS = ensureArray(payload.filterTags).length ? ensureArray(payload.filterTags).map(slugify) : [...DEFAULT_HOME_FILTER_TAGS];
-  } catch (error) {
-    console.info('Using default homepage tag settings.', error);
-    HOME_FILTER_TAGS = [...DEFAULT_HOME_FILTER_TAGS];
-  }
-  renderHomeTagSettings();
-}
-
-async function toggleHomeFilterTag(tag, enabled) {
-  if (!requireAdmin()) return;
-  const next = enabled
-    ? [...new Set([...HOME_FILTER_TAGS, tag])]
-    : HOME_FILTER_TAGS.filter(item => item !== tag);
-  HOME_FILTER_TAGS = next;
-  renderHomeTagSettings();
-
-  try {
-    await callAdminApi('updateHomepageFilterTags', { filterTags: HOME_FILTER_TAGS });
-    setStatus('Home page filter tags updated. The public site cache was refreshed immediately.', 'ok');
-  } catch (error) {
-    setStatus(error.message || 'Unable to update home page filter tags.', 'err');
-  }
-}
-
 async function toggleFeatured(id, nextFeatured) {
   if (!requireAdmin()) return;
 
@@ -3096,10 +3945,10 @@ document.addEventListener('DOMContentLoaded', () => {
   getAnalyticsApi()?.startPageTracking?.({ getPageContext: getCurrentPageAnalyticsContext });
   resetPrompts();
   hydratePexelsApiKey();
+  hydrateGooglePlacesApiKey();
   watchAdminAuth();
   loadSaved();
   loadRecommendationsAdmin();
-  loadHomepageSettings();
   const generateRecommendationsBtn = document.getElementById('generateRecommendationsBtn');
   if (generateRecommendationsBtn) {
     generateRecommendationsBtn.addEventListener('click', event => {
@@ -3121,9 +3970,17 @@ document.addEventListener('DOMContentLoaded', () => {
       runRecommendationDebug();
     });
   }
+  const runGeoapifyDebugBtn = document.getElementById('runGeoapifyDebugBtn');
+  if (runGeoapifyDebugBtn) {
+    runGeoapifyDebugBtn.addEventListener('click', event => {
+      event.preventDefault();
+      runGeoapifyDebug();
+    });
+  }
   document.getElementById('cardImageUrl').addEventListener('input', () => { syncDraftImageOverrides(); });
   document.getElementById('heroImageUrl').addEventListener('input', () => { syncDraftImageOverrides(); });
   document.getElementById('pexelsApiKey').addEventListener('input', () => { persistPexelsApiKey(); });
+  document.getElementById('googlePlacesApiKey').addEventListener('input', () => { persistGooglePlacesApiKey(); });
   document.getElementById('adminEmail').addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
