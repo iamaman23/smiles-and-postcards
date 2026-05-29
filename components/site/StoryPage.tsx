@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { DestinationMap } from "./DestinationMap";
 import { ItineraryExperience } from "./ItineraryExperience";
 import { SiteFooter } from "./SiteFooter";
 import {
@@ -48,14 +49,40 @@ function getFoodCardSubheading(place: PlaceEntity) {
   return "";
 }
 
+function hasCoordinates(place: PlaceEntity) {
+  return Boolean(place.geo && Number.isFinite(place.geo.lat) && Number.isFinite(place.geo.lng));
+}
+
+function uniquePlaces(places: PlaceEntity[]) {
+  const seen = new Set<string>();
+  return places.filter((place) => {
+    const key = [place.name, place.geo?.lat, place.geo?.lng, place.kind].join("::");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function StoryPage({ story }: { story: TravelBlog }) {
   const hasNotes = Boolean(story.warnings?.length || story.skipIf?.length);
   const breakdownScores = getBreakdownScores(story);
   const walkabilityScore = breakdownScores.find(([label]) => label === "Walkability")?.[1] ?? 7;
+  const destinationLabel = `${story.city}, ${story.country}`;
+  const mappedFoodSpots = story.food.filter(hasCoordinates);
+  const mappedGems = story.gems.filter(hasCoordinates);
+  const mappedItinerarySpots = uniquePlaces(
+    story.itinerary.flatMap((day) => (day.spotDetails || []).filter(hasCoordinates))
+  );
+  const combinedMappedSpots = uniquePlaces([
+    ...mappedItinerarySpots,
+    ...mappedFoodSpots,
+    ...mappedGems
+  ]);
   const guideLinks = [
     story.itinerary?.length ? { href: "#section-itinerary", label: "Itinerary" } : null,
     story.food?.length ? { href: "#section-food", label: "Best Food Spots" } : null,
     story.gems?.length ? { href: "#section-gems", label: "Worth a Detour" } : null,
+    combinedMappedSpots.length ? { href: "#section-map-overview", label: "Map Overview" } : null,
     story.highlights?.length ? { href: "#section-highlights", label: "Highlights" } : null,
     story.budgetBreakdown?.length ? { href: "#section-budget", label: "Budget Breakdown" } : null,
     hasNotes ? { href: "#section-notes", label: "Warnings and Skip If" } : null
@@ -134,7 +161,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   <p className="content-section__subtitle">{story.days} days of carefully planned wandering</p>
                 </div>
               </div>
-              <ItineraryExperience itinerary={story.itinerary} storyId={story.id} />
+              <ItineraryExperience itinerary={story.itinerary} storyId={story.id} destinationLabel={destinationLabel} />
             </section>
           ) : null}
 
@@ -168,6 +195,17 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   </div>
                 ))}
               </div>
+              {mappedFoodSpots.length ? (
+                <div className="section-map-block">
+                  <DestinationMap
+                    destinationLabel={destinationLabel}
+                    eyebrow="Food map"
+                    spots={mappedFoodSpots}
+                    title="Best Food Spots"
+                    variant="food"
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 
@@ -204,6 +242,17 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   </div>
                 ))}
               </div>
+              {mappedGems.length ? (
+                <div className="section-map-block">
+                  <DestinationMap
+                    destinationLabel={destinationLabel}
+                    eyebrow="Detour map"
+                    spots={mappedGems}
+                    title="Worth a Detour"
+                    variant="gem"
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 
@@ -314,6 +363,31 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   </div>
                 </details>
               ) : null}
+            </section>
+          ) : null}
+
+          {combinedMappedSpots.length ? (
+            <section className="content-section reveal" id="section-map-overview">
+              <div className="content-section__header">
+                <div className="content-section__icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z" />
+                    <path d="M9 3v15" />
+                    <path d="M15 6v15" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="content-section__title">Everything on One Map</h2>
+                  <p className="content-section__subtitle">A full destination view with itinerary stops, food finds, and worthwhile detours layered together</p>
+                </div>
+              </div>
+              <DestinationMap
+                destinationLabel={destinationLabel}
+                eyebrow="Full map"
+                spots={combinedMappedSpots}
+                title={destinationLabel}
+                variant="combined"
+              />
             </section>
           ) : null}
         </div>
