@@ -12,6 +12,7 @@ type DestinationMapProps = {
   metaLabel?: string;
   emptyLabel?: string;
   overlayLabel?: string;
+  destinationLabel?: string;
   fallbackSpots?: PlaceEntity[];
   spots: PlaceEntity[];
   variant?: MapVariant;
@@ -65,9 +66,28 @@ function getBounds(maplibre: Awaited<typeof import("maplibre-gl")>, spots: Place
   return bounds;
 }
 
-function buildPopupCard(spot: PlaceEntity, onClose: () => void) {
+function getGoogleMapsPlaceUrl(spot: PlaceEntity, destinationLabel?: string) {
+  const query = [spot.name, spot.address, destinationLabel].filter(Boolean).join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function buildPopupCard(spot: PlaceEntity, onClose: () => void, destinationLabel?: string) {
   const card = document.createElement("article");
   card.className = "destination-map-card";
+
+  const redirectLink = document.createElement("a");
+  redirectLink.href = getGoogleMapsPlaceUrl(spot, destinationLabel);
+  redirectLink.target = "_blank";
+  redirectLink.rel = "noreferrer";
+  redirectLink.className = "destination-map-card__redirect";
+  redirectLink.setAttribute("aria-label", `Open ${spot.name} in Google Maps`);
+  redirectLink.setAttribute("title", `Open ${spot.name} in Google Maps`);
+  redirectLink.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Z"></path>
+      <circle cx="12" cy="10" r="2.5"></circle>
+    </svg>
+  `;
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
@@ -88,7 +108,7 @@ function buildPopupCard(spot: PlaceEntity, onClose: () => void) {
   description.className = "destination-map-card__description";
   description.textContent = spot.desc?.trim() || FALLBACK_DESCRIPTION;
 
-  card.append(closeButton, title);
+  card.append(redirectLink, closeButton, title);
 
   if (spot.address?.trim()) {
     const address = document.createElement("p");
@@ -190,6 +210,7 @@ export function DestinationMap({
   metaLabel,
   emptyLabel,
   overlayLabel,
+  destinationLabel,
   fallbackSpots = [],
   spots,
   variant = "itinerary"
@@ -434,9 +455,9 @@ export function DestinationMap({
 
     popupRef.current
       ?.setLngLat([activeSpot.geo.lng, activeSpot.geo.lat])
-      .setDOMContent(buildPopupCard(activeSpot, () => setActiveSpotName(null)))
+      .setDOMContent(buildPopupCard(activeSpot, () => setActiveSpotName(null), destinationLabel))
       .addTo(mapRef.current);
-  }, [activeSpotName, isMapReady, visibleSpots]);
+  }, [activeSpotName, destinationLabel, isMapReady, visibleSpots]);
 
   if (!hasAnyMappedSpots) {
     return (

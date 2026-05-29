@@ -20,10 +20,12 @@ function getMappedSpots(day: BlogDay | undefined) {
 
 export function ItineraryExperience({
   itinerary,
-  storyId
+  storyId,
+  destinationLabel
 }: {
   itinerary: BlogDay[];
   storyId: string;
+  destinationLabel: string;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const activeDay = itinerary[activeIndex];
@@ -49,6 +51,7 @@ export function ItineraryExperience({
       </div>
       <DestinationMap
         eyebrow="Itinerary map"
+        destinationLabel={destinationLabel}
         fallbackSpots={fallbackSpots}
         spots={visibleSpots}
         title={`Day ${getDayNumber(activeDay, activeIndex)}`}

@@ -808,8 +808,6 @@ input:focus-visible,
 .home-score-guide__pill--safety {
   background: rgba(117, 105, 87, 0.08);
   color: var(--ink);
-  font-size: 0.67rem;
-  letter-spacing: 0.1em;
 }
 .home-score-guide__item p {
   margin: 0;
@@ -2522,11 +2520,11 @@ input:focus-visible,
   padding: 0.95rem 1rem 1rem;
   position: relative;
 }
+.destination-map-card__redirect,
 .destination-map__frame .maplibregl-popup-close-button,
 .destination-map-card__close {
   position: absolute;
   top: 0.55rem;
-  right: 0.6rem;
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 999px;
@@ -2536,10 +2534,25 @@ input:focus-visible,
   border: 1px solid rgba(147, 136, 118, 0.18);
   background: rgba(255, 255, 255, 0.82);
   color: var(--text-muted);
-  font-size: 1.1rem;
   line-height: 1;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
+.destination-map-card__redirect {
+  right: 2.9rem;
+  text-decoration: none;
+}
+.destination-map__frame .maplibregl-popup-close-button,
+.destination-map-card__close {
+  right: 0.6rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 1.1rem;
+}
+.destination-map-card__redirect svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.destination-map-card__redirect:hover,
 .destination-map__frame .maplibregl-popup-close-button:hover,
 .destination-map-card__close:hover {
   background: rgba(255, 255, 255, 0.96);

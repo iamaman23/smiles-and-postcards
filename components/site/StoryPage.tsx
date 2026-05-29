@@ -67,6 +67,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
   const hasNotes = Boolean(story.warnings?.length || story.skipIf?.length);
   const breakdownScores = getBreakdownScores(story);
   const walkabilityScore = breakdownScores.find(([label]) => label === "Walkability")?.[1] ?? 7;
+  const destinationLabel = `${story.city}, ${story.country}`;
   const mappedFoodSpots = story.food.filter(hasCoordinates);
   const mappedGems = story.gems.filter(hasCoordinates);
   const mappedItinerarySpots = uniquePlaces(
@@ -160,7 +161,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                   <p className="content-section__subtitle">{story.days} days of carefully planned wandering</p>
                 </div>
               </div>
-              <ItineraryExperience itinerary={story.itinerary} storyId={story.id} />
+              <ItineraryExperience itinerary={story.itinerary} storyId={story.id} destinationLabel={destinationLabel} />
             </section>
           ) : null}
 
@@ -197,6 +198,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
               {mappedFoodSpots.length ? (
                 <div className="section-map-block">
                   <DestinationMap
+                    destinationLabel={destinationLabel}
                     eyebrow="Food map"
                     spots={mappedFoodSpots}
                     title="Best Food Spots"
@@ -243,6 +245,7 @@ export function StoryPage({ story }: { story: TravelBlog }) {
               {mappedGems.length ? (
                 <div className="section-map-block">
                   <DestinationMap
+                    destinationLabel={destinationLabel}
                     eyebrow="Detour map"
                     spots={mappedGems}
                     title="Worth a Detour"
@@ -379,9 +382,10 @@ export function StoryPage({ story }: { story: TravelBlog }) {
                 </div>
               </div>
               <DestinationMap
+                destinationLabel={destinationLabel}
                 eyebrow="Full map"
                 spots={combinedMappedSpots}
-                title={`${story.city}, ${story.country}`}
+                title={destinationLabel}
                 variant="combined"
               />
             </section>
