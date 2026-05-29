@@ -77,7 +77,7 @@ const HOME_SCORE_COPY: Record<ScoreKey, { label: string; description: string }> 
   },
   safety: {
     label: "Safe",
-    description: "How comfortable most travelers should feel with normal city awareness. A safety score of 8 means confidently manageable, not risk-free."
+    description: "How comfortable most travelers should feel with normal city awareness."
   }
 };
 
@@ -520,8 +520,8 @@ export function HomePageExperience({ stories }: { stories: TravelBlog[] }) {
               </div>
               <div className="home-score-guide__legend">
                 {(["walkability", "food", "safety"] as ScoreKey[]).map((key) => (
-                  <div className="home-score-guide__item" key={key}>
-                    <span className="home-score-guide__pill">{HOME_SCORE_COPY[key].label}</span>
+                  <div className={`home-score-guide__item home-score-guide__item--${key}`} key={key}>
+                    <span className={`home-score-guide__pill home-score-guide__pill--${key}`}>{HOME_SCORE_COPY[key].label}</span>
                     <p>{HOME_SCORE_COPY[key].description}</p>
                   </div>
                 ))}
